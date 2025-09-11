@@ -328,3 +328,35 @@
         display: none;
     }
 }
+
+/* 동일_차명의심_상세 정보 테이블 스타일 */
+.duplicate-persons-table th {
+    white-space: nowrap;
+}
+
+.duplicate-persons-table td {
+    word-break: break-word;
+}
+
+/* 매칭된 컬럼 강조 효과 */
+.duplicate-persons-table td.matched-column {
+    background: #383838 !important;
+    font-weight: 600;
+    position: relative;
+}
+
+.duplicate-persons-table tr:hover td.matched-column {
+    background: #424242 !important;
+}
+
+/* 매칭 정보 표시 */
+.match-info-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    margin-left: 4px;
+    background: #4fc3f7;
+    color: #000;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+}

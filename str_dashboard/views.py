@@ -199,6 +199,85 @@ def query_person_info(request, oracle_conn=None):
 @login_required
 @require_POST
 @require_db_connection
+def query_person_detail_info(request, oracle_conn=None):
+    """고객 상세 정보 조회 (개인/법인 구분)"""
+    cust_id = request.POST.get('cust_id', '').strip()
+    cust_type = request.POST.get('cust_type', '').strip()  # '개인' or '법인'
+    
+    if not cust_id:
+        return HttpResponseBadRequest('Missing cust_id.')
+    
+    # 고객 유형에 따라 다른 SQL 파일 사용
+    if cust_type == '법인':
+        sql_filename = 'corp_detail_info.sql'
+    else:
+        sql_filename = 'person_detail_info.sql'
+    
+    # 쿼리 실행
+    result = execute_query_with_error_handling(
+        oracle_conn=oracle_conn,
+        sql_filename=sql_filename,
+        bind_params={':custId': '?'},
+        query_params=[cust_id]
+    )
+    
+    return JsonResponse(result)
+
+
+@login_required
+@require_POST
+@require_db_connection
+def query_duplicate_persons(request, oracle_conn=None):
+    """동일한 정보를 가진 회원 조회"""
+    email_prefix = request.POST.get('email_prefix', '').strip()
+    phone_suffix = request.POST.get('phone_suffix', '').strip()
+    full_address = request.POST.get('full_address', '').strip()
+    current_cust_id = request.POST.get('current_cust_id', '').strip()
+    
+    if not current_cust_id:
+        return HttpResponseBadRequest('Missing current_cust_id.')
+    
+    # 최소 하나의 검색 조건은 있어야 함
+    if not (email_prefix or phone_suffix or full_address):
+        return JsonResponse({
+            'success': True,
+            'columns': [],
+            'rows': [],
+            'message': '검색 조건이 없습니다.'
+        })
+    
+    # NULL 값을 빈 문자열로 처리
+    email_prefix = email_prefix or ''
+    phone_suffix = phone_suffix or ''
+    full_address = full_address or ''
+    
+    # 쿼리 실행
+    result = execute_query_with_error_handling(
+        oracle_conn=oracle_conn,
+        sql_filename='person_duplicate_check.sql',
+        bind_params={
+            ':email_prefix': '?',
+            ':phone_suffix': '?',
+            ':full_address': '?',
+            ':current_cust_id': '?'
+        },
+        query_params=[email_prefix, phone_suffix, full_address, current_cust_id]
+    )
+    
+    # 매칭 정보 추가
+    if result['success'] and result.get('rows'):
+        result['match_criteria'] = {
+            'email_prefix': email_prefix if email_prefix else None,
+            'phone_suffix': phone_suffix if phone_suffix else None,
+            'full_address': full_address if full_address else None
+        }
+    
+    return JsonResponse(result)
+
+
+@login_required
+@require_POST
+@require_db_connection
 def rule_history_search(request, oracle_conn=None):
     """
     RULE 히스토리 검색
@@ -295,33 +374,3 @@ def clear_db_session(request):
         if key in request.session:
             del request.session[key]
     logger.info("Database session cleared")
-
-
-
-@login_required
-@require_POST
-@require_db_connection
-def query_person_detail_info(request, oracle_conn=None):
-    """고객 상세 정보 조회 (개인/법인 구분)"""
-    cust_id = request.POST.get('cust_id', '').strip()
-    cust_type = request.POST.get('cust_type', '').strip()  # '개인' or '법인'
-    
-    if not cust_id:
-        return HttpResponseBadRequest('Missing cust_id.')
-    
-    # 고객 유형에 따라 다른 SQL 파일 사용
-    if cust_type == '법인':
-        sql_filename = 'corp_detail_info.sql'
-    else:
-        sql_filename = 'person_detail_info.sql'
-    
-    # 쿼리 실행
-    result = execute_query_with_error_handling(
-        oracle_conn=oracle_conn,
-        sql_filename=sql_filename,
-        bind_params={':custId': '?'},
-        query_params=[cust_id]
-    )
-    
-    return JsonResponse(result)
-

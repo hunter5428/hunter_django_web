@@ -30,10 +30,16 @@
     <div class="table-wrap" id="result_table_person_info"></div>
 </div>
 
-<!-- 섹션: 고객 상세 정보 (신규) -->
+<!-- 섹션: 고객 상세 정보 -->
 <div id="section_person_detail" class="section" style="display:none;">
     <h3>고객 상세 정보</h3>
     <div class="table-wrap" id="result_table_person_detail"></div>
+</div>
+
+<!-- 섹션: 동일_차명의심_상세 정보 (신규) -->
+<div id="section_duplicate_persons" class="section" style="display:none;">
+    <h3>동일_차명의심_상세 정보</h3>
+    <div class="table-wrap" id="result_table_duplicate_persons"></div>
 </div>
 
 <!-- 섹션: RULE_ID_히스토리 -->
@@ -96,7 +102,8 @@ window.URLS = {
     test_connection: "{% url 'test_oracle_connection' %}",
     query_alert: "{% url 'query_alert_info' %}",
     query_person: "{% url 'query_person_info' %}",
-    rule_history: "{% url 'rule_history_search' %}"
+    rule_history: "{% url 'rule_history_search' %}",
+    query_duplicate_persons: "{% url 'query_duplicate_persons' %}"
 };
 </script>
 

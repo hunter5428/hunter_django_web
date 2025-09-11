@@ -25,4 +25,5 @@ urlpatterns = [
     path('api/query_person_info/', views.query_person_info, name='query_person_info'),
     path('api/rule_history_search/', views.rule_history_search, name='rule_history_search'),
     path('api/query_person_detail_info/', views.query_person_detail_info, name='query_person_detail_info'),
+    path('api/query_duplicate_persons/', views.query_duplicate_persons, name='query_duplicate_persons'),
 ]

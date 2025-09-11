@@ -233,6 +233,7 @@
             }
         }
 
+        // AlertSearchManager 클래스의 fetchPersonDetailInfo 메서드 수정
         async fetchPersonDetailInfo(custId, custType) {
             try {
                 const response = await fetch('/api/query_person_detail_info/', {
@@ -250,6 +251,11 @@
                 const detailData = await response.json();
                 if (detailData.success) {
                     window.renderPersonDetailSection(detailData.columns || [], detailData.rows || []);
+                    
+                    // 개인인 경우에만 중복 회원 검색
+                    if (custType === '개인' && detailData.rows && detailData.rows.length > 0) {
+                        await this.fetchDuplicatePersons(custId, detailData.columns, detailData.rows[0]);
+                    }
                 } else {
                     console.error('Person detail query failed:', detailData.message);
                     window.renderPersonDetailSection([], []);
@@ -259,6 +265,7 @@
                 window.renderPersonDetailSection([], []);
             }
         }
+        
 
         async fetchAndRenderAllSections(data) {
             const { cols, rows, alertId, repRuleId, custIdForPerson, canonicalIds } = data;
@@ -306,6 +313,80 @@
             window.renderAlertHistSection(cols, rows, alertId);
             window.renderRuleDescSection(cols, rows, canonicalIds, repRuleId);
         }
+
+        async fetchDuplicatePersons(custId, columns, row) {
+        // 컬럼 인덱스 찾기
+        const emailIdx = columns.indexOf('E-mail');
+        const phoneIdx = columns.indexOf('휴대폰 번호');
+        const addressIdx = columns.indexOf('거주주소');
+        const detailAddressIdx = columns.indexOf('거주상세주소');
+        
+        // 값 추출
+        let emailPrefix = '';
+        let phoneSuffix = '';
+        let fullAddress = '';
+        
+        if (emailIdx >= 0 && row[emailIdx]) {
+            const email = String(row[emailIdx]);
+            const atIndex = email.indexOf('@');
+            if (atIndex > 0) {
+                emailPrefix = email.substring(0, atIndex);
+            }
+        }
+        
+        if (phoneIdx >= 0 && row[phoneIdx]) {
+            const phone = String(row[phoneIdx]);
+            if (phone.length >= 4) {
+                phoneSuffix = phone.slice(-4);
+            }
+        }
+        
+        if (addressIdx >= 0 && detailAddressIdx >= 0) {
+            const addr = row[addressIdx] || '';
+            const detailAddr = row[detailAddressIdx] || '';
+            if (addr || detailAddr) {
+                fullAddress = `${addr}_${detailAddr}`;
+            }
+        }
+        
+        // 검색 조건이 하나라도 있는 경우에만 조회
+        if (!emailPrefix && !phoneSuffix && !fullAddress) {
+            window.renderDuplicatePersonsSection([], [], {});
+            return;
+        }
+        
+        try {
+            const response = await fetch('/api/query_duplicate_persons/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: new URLSearchParams({
+                    email_prefix: emailPrefix,
+                    phone_suffix: phoneSuffix,
+                    full_address: fullAddress,
+                    current_cust_id: String(custId)
+                })
+            });
+            
+            const duplicateData = await response.json();
+            if (duplicateData.success) {
+                window.renderDuplicatePersonsSection(
+                    duplicateData.columns || [], 
+                    duplicateData.rows || [],
+                    duplicateData.match_criteria || {}
+                );
+            } else {
+                console.error('Duplicate persons query failed:', duplicateData.message);
+                window.renderDuplicatePersonsSection([], [], {});
+            }
+        } catch (error) {
+            console.error('Duplicate persons fetch failed:', error);
+            window.renderDuplicatePersonsSection([], [], {});
+        }
+        }
+
     }
 
     // ==================== 초기화 ====================

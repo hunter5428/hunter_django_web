@@ -454,6 +454,111 @@
         }
     }
 
+    // DuplicatePersonsTable 클래스 추가 (PersonDetailTable 클래스 아래에 추가)
+    class DuplicatePersonsTable extends TableComponent {
+        constructor(containerId, matchCriteria) {
+            super(containerId, {
+                className: 'table duplicate-persons-table',
+                emptyMessage: '동일한 E-mail, 휴대폰 번호, 거주주소를 가진 회원이 조회되지 않습니다.',
+                showHeader: true
+            });
+            this.matchCriteria = matchCriteria || {};
+        }
+        
+        /**
+         * 테이블 바디 생성 (오버라이드) - 매칭된 컬럼 강조
+         */
+        createTableBody() {
+            const tbody = document.createElement('tbody');
+            
+            // 매칭 컬럼 인덱스 찾기
+            const emailIdx = this.columns.indexOf('E-mail');
+            const phoneIdx = this.columns.indexOf('휴대폰 번호');
+            const addressIdx = this.columns.indexOf('거주주소');
+            const detailAddressIdx = this.columns.indexOf('거주상세주소');
+            
+            // 매칭 플래그 컬럼 인덱스
+            const emailMatchIdx = this.columns.indexOf('EMAIL_MATCH');
+            const phoneMatchIdx = this.columns.indexOf('PHONE_MATCH');
+            const addressMatchIdx = this.columns.indexOf('ADDRESS_MATCH');
+            
+            this.rows.forEach((row, rowIndex) => {
+                const tr = document.createElement('tr');
+                
+                // hover 효과
+                if (this.options.hoverEffect) {
+                    tr.addEventListener('mouseenter', () => tr.classList.add('hover'));
+                    tr.addEventListener('mouseleave', () => tr.classList.remove('hover'));
+                }
+                
+                // 셀 생성 (매칭 플래그 컬럼 제외)
+                this.columns.forEach((col, colIndex) => {
+                    // 매칭 플래그 컬럼은 표시하지 않음
+                    if (col === 'EMAIL_MATCH' || col === 'PHONE_MATCH' || col === 'ADDRESS_MATCH') {
+                        return;
+                    }
+                    
+                    const td = document.createElement('td');
+                    const value = row[colIndex];
+                    
+                    // 매칭된 컬럼 강조
+                    let isHighlighted = false;
+                    
+                    // E-mail 컬럼 강조
+                    if (colIndex === emailIdx && emailMatchIdx >= 0 && row[emailMatchIdx] === 'Y') {
+                        td.style.backgroundColor = '#383838';
+                        td.style.fontWeight = '600';
+                        isHighlighted = true;
+                    }
+                    
+                    // 휴대폰 번호 컬럼 강조
+                    if (colIndex === phoneIdx && phoneMatchIdx >= 0 && row[phoneMatchIdx] === 'Y') {
+                        td.style.backgroundColor = '#383838';
+                        td.style.fontWeight = '600';
+                        isHighlighted = true;
+                    }
+                    
+                    // 거주주소 컬럼 강조
+                    if ((colIndex === addressIdx || colIndex === detailAddressIdx) && 
+                        addressMatchIdx >= 0 && row[addressMatchIdx] === 'Y') {
+                        td.style.backgroundColor = '#383838';
+                        td.style.fontWeight = '600';
+                        isHighlighted = true;
+                    }
+                    
+                    td.innerHTML = this.formatCellValue(value, col, colIndex, row);
+                    tr.appendChild(td);
+                });
+                
+                tbody.appendChild(tr);
+            });
+            
+            return tbody;
+        }
+        
+        /**
+         * 테이블 헤더 생성 (오버라이드) - 매칭 플래그 컬럼 제외
+         */
+        createTableHeader() {
+            const thead = document.createElement('thead');
+            const tr = document.createElement('tr');
+            
+            this.columns.forEach(col => {
+                // 매칭 플래그 컬럼은 헤더에서도 제외
+                if (col === 'EMAIL_MATCH' || col === 'PHONE_MATCH' || col === 'ADDRESS_MATCH') {
+                    return;
+                }
+                
+                const th = document.createElement('th');
+                th.textContent = col;
+                tr.appendChild(th);
+            });
+            
+            thead.appendChild(tr);
+            return thead;
+        }
+    }
+
     // Rule 히스토리 테이블 (여러 유사 조합 표시 버전)
     class RuleHistoryTable extends TableComponent {
         constructor(containerId) {
@@ -807,7 +912,19 @@
         if (section) section.style.display = 'block';
         window.TableRenderer.renderRuleDescription('result_table_rule_distinct', cols, rows, canonicalIds, repRuleId);
     };
-    
+
+
+    // 전역 렌더링 함수 추가
+    window.renderDuplicatePersonsSection = function(columns, rows, matchCriteria) {
+        const section = document.getElementById('section_duplicate_persons');
+        if (section) section.style.display = 'block';
+        
+        const table = new DuplicatePersonsTable('result_table_duplicate_persons', matchCriteria);
+        table.setData(columns, rows);
+        table.render();
+    };
+
+
     // DOM 준비 후 섹션 토글 초기화
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initSectionToggle);
