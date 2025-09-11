@@ -1,16 +1,16 @@
-// str_dashboard/static/str_dashboard/js/menu1_1_simple.js
+// str_dashboard/static/str_dashboard/js/menu1_1.js
 
 /**
- * ALERT ID 조회 페이지 JavaScript (단순화 버전)
+ * ALERT ID 조회 페이지 메인 JavaScript
  * - 테이블 컴포넌트 활용
  * - 기존 UX 유지
- * - 불필요한 기능 제거
  */
 (function() {
     'use strict';
 
     // ==================== 유틸리티 ====================
     const $ = (sel) => document.querySelector(sel);
+    
     const getCookie = (name) => {
         const value = `; ${document.cookie}`;
         const parts = value.split(`; ${name}=`);
@@ -21,31 +21,21 @@
     class ModalManager {
         constructor(modalId) {
             this.modal = $(modalId);
-            this.isOpen = false;
             this.init();
         }
 
         init() {
-            // 배경 클릭 시 닫기
             this.modal?.addEventListener('click', (e) => {
-                if (e.target === this.modal) {
-                    this.close();
-                }
+                if (e.target === this.modal) this.close();
             });
         }
 
         open() {
-            if (this.modal) {
-                this.modal.style.display = 'flex';
-                this.isOpen = true;
-            }
+            if (this.modal) this.modal.style.display = 'flex';
         }
 
         close() {
-            if (this.modal) {
-                this.modal.style.display = 'none';
-                this.isOpen = false;
-            }
+            if (this.modal) this.modal.style.display = 'none';
         }
     }
 
@@ -58,24 +48,15 @@
         }
 
         init() {
-            $('#btn-open-db-modal')?.addEventListener('click', () => {
-                this.modal.open();
-            });
-
-            $('#btn-close-db-modal')?.addEventListener('click', () => {
-                this.modal.close();
-            });
-
-            $('#btn-test-conn')?.addEventListener('click', () => {
-                this.testConnection();
-            });
+            $('#btn-open-db-modal')?.addEventListener('click', () => this.modal.open());
+            $('#btn-close-db-modal')?.addEventListener('click', () => this.modal.close());
+            $('#btn-test-conn')?.addEventListener('click', () => this.testConnection());
         }
 
         async testConnection() {
             const fields = ['host', 'port', 'service_name', 'username', 'password'];
             const data = {};
 
-            // 입력값 검증
             for (const field of fields) {
                 const value = $(`#${field}`)?.value?.trim();
                 if (!value) {
@@ -86,7 +67,7 @@
             }
 
             try {
-                const response = await fetch("{% url 'test_oracle_connection' %}", {
+                const response = await fetch(window.URLS.test_connection, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded',
@@ -132,15 +113,9 @@
         }
 
         init() {
-            this.searchBtn?.addEventListener('click', () => {
-                this.search();
-            });
-
-            // Enter 키로 검색
+            this.searchBtn?.addEventListener('click', () => this.search());
             this.inputField?.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    this.search();
-                }
+                if (e.key === 'Enter') this.search();
             });
         }
 
@@ -153,8 +128,8 @@
             }
 
             try {
-                // 1. ALERT 정보 조회
-                const alertResponse = await fetch("{% url 'query_alert_info' %}", {
+                // ALERT 정보 조회
+                const alertResponse = await fetch(window.URLS.query_alert, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded',
@@ -172,11 +147,8 @@
 
                 const cols = (alertData.columns || []).map(c => String(c || '').toUpperCase());
                 const rows = alertData.rows || [];
-
-                // 데이터 처리
                 const processedData = this.processAlertData(cols, rows, alertId);
                 
-                // 추가 데이터 조회 및 렌더링
                 await this.fetchAndRenderAllSections(processedData);
                 
             } catch (error) {
@@ -194,7 +166,6 @@
             let custIdForPerson = null;
             const canonicalIds = [];
 
-            // 대표 RULE 찾기
             if (idxAlert >= 0 && idxRule >= 0) {
                 const repRow = rows.find(r => String(r[idxAlert]) === alertId);
                 repRuleId = repRow ? String(repRow[idxRule]) : null;
@@ -203,12 +174,10 @@
                 }
             }
 
-            // 고객 ID 확보
             if (!custIdForPerson && rows.length && idxCust >= 0) {
                 custIdForPerson = rows[0][idxCust];
             }
 
-            // DISTINCT RULE_ID 추출 (순서 유지)
             if (idxRule >= 0) {
                 const seen = new Set();
                 for (const row of rows) {
@@ -223,23 +192,40 @@
                 }
             }
 
-            return {
-                cols,
-                rows,
-                alertId,
-                repRuleId,
-                custIdForPerson,
-                canonicalIds
-            };
+            return { cols, rows, alertId, repRuleId, custIdForPerson, canonicalIds };
+        }
+
+        async fetchPersonDetailInfo(custId, custType) {
+            try {
+                const response = await fetch(window.URLS.query_person_detail || '/api/query_person_detail_info/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: new URLSearchParams({ 
+                        cust_id: String(custId),
+                        cust_type: custType || '개인'
+                    })
+                });
+                
+                const detailData = await response.json();
+                if (detailData.success) {
+                    window.renderPersonDetailSection(detailData.columns || [], detailData.rows || []);
+                }
+            } catch (error) {
+                console.error('Person detail info fetch failed:', error);
+                window.renderPersonDetailSection([], []);
+            }
         }
 
         async fetchAndRenderAllSections(data) {
             const { cols, rows, alertId, repRuleId, custIdForPerson, canonicalIds } = data;
 
-            // 1. 고객 정보 조회
+            // 고객 정보 조회
             if (custIdForPerson) {
                 try {
-                    const response = await fetch("{% url 'query_person_info' %}", {
+                    const response = await fetch(window.URLS.query_person, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/x-www-form-urlencoded',
@@ -260,11 +246,11 @@
                 window.renderPersonInfoSection([], []);
             }
 
-            // 2. RULE 히스토리 조회
+            // RULE 히스토리 조회
             if (canonicalIds.length > 0) {
                 const ruleKey = canonicalIds.slice().sort().join(',');
                 try {
-                    const response = await fetch("{% url 'rule_history_search' %}", {
+                    const response = await fetch(window.URLS.rule_history, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/x-www-form-urlencoded',
@@ -283,7 +269,7 @@
                 }
             }
 
-            // 3. 나머지 섹션 렌더링 (테이블 컴포넌트 활용)
+            // 나머지 섹션 렌더링 (테이블 컴포넌트 활용)
             const ruleObjMap = window.RULE_OBJ_MAP || {};
             window.renderObjectivesSection(cols, rows, ruleObjMap, canonicalIds, repRuleId);
             window.renderAlertHistSection(cols, rows, alertId);
@@ -298,8 +284,7 @@
         window.alertManager = new AlertSearchManager();
 
         // 초기 상태: 섹션 숨김
-        const sections = document.querySelectorAll('.section');
-        sections.forEach(section => {
+        document.querySelectorAll('.section').forEach(section => {
             section.style.display = 'none';
         });
 

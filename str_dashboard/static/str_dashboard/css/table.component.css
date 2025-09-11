@@ -76,6 +76,77 @@
     background: #181818;
 }
 
+/* 2열 Key-Value 테이블 스타일 */
+.table-kv-2col th {
+    width: 150px;
+    background: #111;
+    color: #bdbdbd;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.table-kv-2col td {
+    background: #1a1a1a;
+    min-width: 200px;
+}
+
+.table-kv-2col tr:hover td {
+    background: #181818;
+}
+
+/* 섹션 토글 (접기/펼치기) */
+.section {
+    margin-bottom: 20px; /* 섹션 간 여백 */
+}
+
+.section h3 {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    padding-right: 30px;
+    transition: all 0.2s ease;
+}
+
+.section h3:hover {
+    background: #222;
+    transform: translateX(2px);
+}
+
+.section h3::after {
+    content: '▼';
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    transition: transform 0.3s ease;
+}
+
+.section.collapsed h3::after {
+    transform: translateY(-50%) rotate(-90deg);
+}
+
+.section.collapsed .table-wrap {
+    display: none;
+}
+
+.section .table-wrap {
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        max-height: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        max-height: 2000px;
+        transform: translateY(0);
+    }
+}
+
 /* ==================== 섹션별 커스터마이징 ==================== */
 
 /* 고객 정보 테이블 */

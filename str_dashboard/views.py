@@ -286,3 +286,33 @@ def clear_db_session(request):
         if key in request.session:
             del request.session[key]
     logger.info("Database session cleared")
+
+
+
+@login_required
+@require_POST
+@require_db_connection
+def query_person_detail_info(request, oracle_conn=None):
+    """고객 상세 정보 조회 (개인/법인 구분)"""
+    cust_id = request.POST.get('cust_id', '').strip()
+    cust_type = request.POST.get('cust_type', '').strip()  # '개인' or '법인'
+    
+    if not cust_id:
+        return HttpResponseBadRequest('Missing cust_id.')
+    
+    # 고객 유형에 따라 다른 SQL 파일 사용
+    if cust_type == '법인':
+        sql_filename = 'corp_detail_info.sql'
+    else:
+        sql_filename = 'person_detail_info.sql'
+    
+    # 쿼리 실행
+    result = execute_query_with_error_handling(
+        oracle_conn=oracle_conn,
+        sql_filename=sql_filename,
+        bind_params={':custId': '?'},
+        query_params=[cust_id]
+    )
+    
+    return JsonResponse(result)
+

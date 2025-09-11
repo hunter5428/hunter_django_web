@@ -570,6 +570,14 @@
         window.TableRenderer.renderPersonInfo('result_table_person_info', columns, rows);
     };
     
+    window.renderPersonDetailSection = function(columns, rows) {
+        const section = document.getElementById('section_person_detail');
+        if (section) section.style.display = 'block';
+        const table = new PersonDetailTable('result_table_person_detail');
+        table.setData(columns, rows);
+        table.render();
+    };
+    
     window.renderRuleHistorySection = function(columns, rows) {
         const section = document.getElementById('section_rule_hist');
         if (section) section.style.display = 'block';
