@@ -190,7 +190,10 @@ class SQLQueryManager:
         # 바인드 변수 처리
         if bind_params:
             for bind_var, placeholder in bind_params.items():
-                sql = re.sub(rf"{re.escape(bind_var)}\b", placeholder, sql)
+                # 콜론(:)을 포함한 바인드 변수를 정확히 매칭
+                # 뒤에 오는 것이 단어 문자가 아닌 경우만 매칭 (공백, 괄호, 연산자 등)
+                pattern = re.escape(bind_var) + r'(?![a-zA-Z0-9_])'
+                sql = re.sub(pattern, placeholder, sql)
         
         # 마지막 세미콜론 제거
         if sql.rstrip().endswith(";"):
@@ -252,11 +255,22 @@ def execute_query_with_error_handling(
         # SQL 로드 및 준비
         prepared_sql, param_count = SQLQueryManager.load_and_prepare(sql_filename, bind_params)
         
+        # 디버깅 로그 추가
+        logger.debug(f"SQL File: {sql_filename}")
+        logger.debug(f"Expected params: {param_count}, Provided params: {len(query_params) if query_params else 0}")
+        
         # 파라미터 검증
         if param_count > 0 and not query_params:
             return {
                 'success': False,
                 'message': f'쿼리에 {param_count}개의 파라미터가 필요하지만 제공되지 않았습니다.'
+            }
+        
+        # 파라미터 개수 불일치 검증
+        if param_count != (len(query_params) if query_params else 0):
+            return {
+                'success': False,
+                'message': f'파라미터 개수 불일치: 필요 {param_count}개, 제공 {len(query_params) if query_params else 0}개'
             }
         
         # 쿼리 실행

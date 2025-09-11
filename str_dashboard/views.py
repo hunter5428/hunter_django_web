@@ -210,15 +210,21 @@ def query_person_detail_info(request, oracle_conn=None):
     # 고객 유형에 따라 다른 SQL 파일 사용
     if cust_type == '법인':
         sql_filename = 'corp_detail_info.sql'
+        # corp_detail_info.sql은 :custId를 한 번만 사용
+        bind_params = {':custId': '?'}
+        query_params = [cust_id]
     else:
         sql_filename = 'person_detail_info.sql'
+        # person_detail_info.sql도 :custId를 한 번만 사용
+        bind_params = {':custId': '?'}
+        query_params = [cust_id]
     
     # 쿼리 실행
     result = execute_query_with_error_handling(
         oracle_conn=oracle_conn,
         sql_filename=sql_filename,
-        bind_params={':custId': '?'},
-        query_params=[cust_id]
+        bind_params=bind_params,
+        query_params=query_params
     )
     
     return JsonResponse(result)

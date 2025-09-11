@@ -235,6 +235,10 @@
 
         async fetchPersonDetailInfo(custId, custType) {
             try {
+                // 고객 유형 확인 및 정확한 값 전달
+                const actualCustType = (custType === '법인') ? '법인' : '개인';
+                console.log(`Fetching detail for custId: ${custId}, type: ${actualCustType}`);
+                
                 const response = await fetch('/api/query_person_detail_info/', {
                     method: 'POST',
                     headers: {
@@ -243,7 +247,7 @@
                     },
                     body: new URLSearchParams({ 
                         cust_id: String(custId),
-                        cust_type: custType || '개인'
+                        cust_type: actualCustType
                     })
                 });
                 
