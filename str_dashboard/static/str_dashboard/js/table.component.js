@@ -428,6 +428,7 @@
         }
     }
 
+
     /**
      * 특화된 테이블 컴포넌트들
      */
@@ -454,7 +455,18 @@
         }
     }
 
-    // DuplicatePersonsTable 클래스 추가 (PersonDetailTable 클래스 아래에 추가)
+    // 법인 관련인 테이블 클래스
+    class CorpRelatedPersonsTable extends TableComponent {
+        constructor(containerId) {
+            super(containerId, {
+                className: 'table corp-related-table',
+                emptyMessage: '등록된 관련인 정보가 없습니다.',
+                showHeader: true
+            });
+        }
+    }
+
+    // DuplicatePersonsTable 클래스 - NULL 컬럼 제외 처리 추가
     class DuplicatePersonsTable extends TableComponent {
         constructor(containerId, matchCriteria) {
             super(containerId, {
@@ -463,27 +475,78 @@
                 showHeader: true
             });
             this.matchCriteria = matchCriteria || {};
+            this.visibleColumnIndices = [];  // NULL이 아닌 컬럼 인덱스
         }
         
         /**
-         * 테이블 바디 생성 (오버라이드) - 매칭된 컬럼 강조
+         * 데이터 설정 (오버라이드) - NULL 컬럼 필터링
+         */
+        setData(columns, rows) {
+            this.columns = columns || [];
+            this.rows = rows || [];
+            
+            // NULL이 아닌 컬럼 찾기
+            this.visibleColumnIndices = [];
+            if (this.rows.length > 0) {
+                this.columns.forEach((col, idx) => {
+                    // MATCH_TYPE은 항상 제외
+                    if (col === 'MATCH_TYPE') return;
+                    
+                    // 모든 행에서 해당 컬럼이 NULL인지 체크
+                    const hasNonNullValue = this.rows.some(row => {
+                        const value = row[idx];
+                        return value != null && value !== '';
+                    });
+                    
+                    if (hasNonNullValue) {
+                        this.visibleColumnIndices.push(idx);
+                    }
+                });
+            } else {
+                // 데이터가 없으면 MATCH_TYPE 제외한 모든 컬럼 표시
+                this.columns.forEach((col, idx) => {
+                    if (col !== 'MATCH_TYPE') {
+                        this.visibleColumnIndices.push(idx);
+                    }
+                });
+            }
+            
+            return this;
+        }
+        
+        /**
+         * 테이블 헤더 생성 (오버라이드) - NULL 컬럼 제외
+         */
+        createTableHeader() {
+            const thead = document.createElement('thead');
+            const tr = document.createElement('tr');
+            
+            this.visibleColumnIndices.forEach(idx => {
+                const th = document.createElement('th');
+                th.textContent = this.columns[idx];
+                tr.appendChild(th);
+            });
+            
+            thead.appendChild(tr);
+            return thead;
+        }
+        
+        /**
+         * 테이블 바디 생성 (오버라이드) - 매칭된 컬럼 강조 및 NULL 컬럼 제외
          */
         createTableBody() {
             const tbody = document.createElement('tbody');
             
-            // 매칭 컬럼 인덱스 찾기
+            // 매칭 컬럼 인덱스
             const emailIdx = this.columns.indexOf('E-mail');
             const phoneIdx = this.columns.indexOf('휴대폰 번호');
             const addressIdx = this.columns.indexOf('거주주소');
             const detailAddressIdx = this.columns.indexOf('거주상세주소');
-            
-            // 매칭 플래그 컬럼 인덱스
-            const emailMatchIdx = this.columns.indexOf('EMAIL_MATCH');
-            const phoneMatchIdx = this.columns.indexOf('PHONE_MATCH');
-            const addressMatchIdx = this.columns.indexOf('ADDRESS_MATCH');
+            const matchTypeIdx = this.columns.indexOf('MATCH_TYPE');
             
             this.rows.forEach((row, rowIndex) => {
                 const tr = document.createElement('tr');
+                const matchType = matchTypeIdx >= 0 ? row[matchTypeIdx] : '';
                 
                 // hover 효과
                 if (this.options.hoverEffect) {
@@ -491,42 +554,28 @@
                     tr.addEventListener('mouseleave', () => tr.classList.remove('hover'));
                 }
                 
-                // 셀 생성 (매칭 플래그 컬럼 제외)
-                this.columns.forEach((col, colIndex) => {
-                    // 매칭 플래그 컬럼은 표시하지 않음
-                    if (col === 'EMAIL_MATCH' || col === 'PHONE_MATCH' || col === 'ADDRESS_MATCH') {
-                        return;
-                    }
-                    
+                // 표시할 컬럼만 셀 생성
+                this.visibleColumnIndices.forEach(colIndex => {
                     const td = document.createElement('td');
                     const value = row[colIndex];
                     
                     // 매칭된 컬럼 강조
-                    let isHighlighted = false;
-                    
-                    // E-mail 컬럼 강조
-                    if (colIndex === emailIdx && emailMatchIdx >= 0 && row[emailMatchIdx] === 'Y') {
+                    if ((matchType === 'EMAIL' && colIndex === emailIdx) ||
+                        (matchType === 'ADDRESS' && (colIndex === addressIdx || colIndex === detailAddressIdx))) {
                         td.style.backgroundColor = '#383838';
                         td.style.fontWeight = '600';
-                        isHighlighted = true;
                     }
                     
-                    // 휴대폰 번호 컬럼 강조
-                    if (colIndex === phoneIdx && phoneMatchIdx >= 0 && row[phoneMatchIdx] === 'Y') {
-                        td.style.backgroundColor = '#383838';
-                        td.style.fontWeight = '600';
-                        isHighlighted = true;
+                    // 휴대폰 번호는 항상 체크
+                    if (colIndex === phoneIdx && this.matchCriteria.phone_suffix) {
+                        const phone = String(value || '');
+                        if (phone.slice(-4) === this.matchCriteria.phone_suffix) {
+                            td.style.backgroundColor = '#383838';
+                            td.style.fontWeight = '600';
+                        }
                     }
                     
-                    // 거주주소 컬럼 강조
-                    if ((colIndex === addressIdx || colIndex === detailAddressIdx) && 
-                        addressMatchIdx >= 0 && row[addressMatchIdx] === 'Y') {
-                        td.style.backgroundColor = '#383838';
-                        td.style.fontWeight = '600';
-                        isHighlighted = true;
-                    }
-                    
-                    td.innerHTML = this.formatCellValue(value, col, colIndex, row);
+                    td.innerHTML = this.formatCellValue(value, this.columns[colIndex], colIndex, row);
                     tr.appendChild(td);
                 });
                 
@@ -534,28 +583,6 @@
             });
             
             return tbody;
-        }
-        
-        /**
-         * 테이블 헤더 생성 (오버라이드) - 매칭 플래그 컬럼 제외
-         */
-        createTableHeader() {
-            const thead = document.createElement('thead');
-            const tr = document.createElement('tr');
-            
-            this.columns.forEach(col => {
-                // 매칭 플래그 컬럼은 헤더에서도 제외
-                if (col === 'EMAIL_MATCH' || col === 'PHONE_MATCH' || col === 'ADDRESS_MATCH') {
-                    return;
-                }
-                
-                const th = document.createElement('th');
-                th.textContent = col;
-                tr.appendChild(th);
-            });
-            
-            thead.appendChild(tr);
-            return thead;
         }
     }
 
@@ -884,6 +911,17 @@
         window.TableRenderer.renderPersonDetail('result_table_person_detail', columns, rows);
     };
     
+    // 법인 관련인 정보 렌더링 함수
+    window.renderCorpRelatedSection = function(columns, rows) {
+        const section = document.getElementById('section_corp_related');
+        if (section) {
+            section.style.display = 'block';
+            const table = new CorpRelatedPersonsTable('result_table_corp_related');
+            table.setData(columns, rows);
+            table.render();
+        }
+    };
+    
     // 전역 함수 수정 - renderRuleHistorySection
     window.renderRuleHistorySection = function(columns, rows, searchedRule, similarList) {
         const section = document.getElementById('section_rule_hist');
@@ -913,8 +951,7 @@
         window.TableRenderer.renderRuleDescription('result_table_rule_distinct', cols, rows, canonicalIds, repRuleId);
     };
 
-
-    // 전역 렌더링 함수 추가
+    // 전역 렌더링 함수 추가 - 동일_차명의심_상세 정보
     window.renderDuplicatePersonsSection = function(columns, rows, matchCriteria) {
         const section = document.getElementById('section_duplicate_persons');
         if (section) section.style.display = 'block';
@@ -923,7 +960,6 @@
         table.setData(columns, rows);
         table.render();
     };
-
 
     // DOM 준비 후 섹션 토글 초기화
     if (document.readyState === 'loading') {

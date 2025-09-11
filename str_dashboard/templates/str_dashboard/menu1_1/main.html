@@ -66,6 +66,11 @@
     <div class="table-wrap" id="result_table_rule_distinct"></div>
 </div>
 
+<div id="section_corp_related" class="section" style="display:none;">
+    <h3>법인 관련인 정보</h3>
+    <div class="table-wrap" id="result_table_corp_related"></div>
+</div>
+
 <!-- DB 연결 모달 -->
 <div class="modal-backdrop" id="db-modal">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="db-modal-title">
@@ -103,7 +108,9 @@ window.URLS = {
     query_alert: "{% url 'query_alert_info' %}",
     query_person: "{% url 'query_person_info' %}",
     rule_history: "{% url 'rule_history_search' %}",
-    query_duplicate_persons: "{% url 'query_duplicate_persons' %}"
+    query_duplicate_by_email: "{% url 'query_duplicate_by_email' %}",
+    query_duplicate_by_address: "{% url 'query_duplicate_by_address' %}",
+    query_corp_related_persons: "{% url 'query_corp_related_persons' %}"
 };
 </script>
 

@@ -233,7 +233,6 @@
             }
         }
 
-        // AlertSearchManager 클래스의 fetchPersonDetailInfo 메서드 수정
         async fetchPersonDetailInfo(custId, custType) {
             try {
                 const response = await fetch('/api/query_person_detail_info/', {
@@ -252,8 +251,12 @@
                 if (detailData.success) {
                     window.renderPersonDetailSection(detailData.columns || [], detailData.rows || []);
                     
+                    // 법인인 경우 관련인 정보도 조회
+                    if (custType === '법인') {
+                        await this.fetchCorpRelatedPersons(custId);
+                    }
                     // 개인인 경우에만 중복 회원 검색
-                    if (custType === '개인' && detailData.rows && detailData.rows.length > 0) {
+                    else if (custType === '개인' && detailData.rows && detailData.rows.length > 0) {
                         await this.fetchDuplicatePersons(custId, detailData.columns, detailData.rows[0]);
                     }
                 } else {
@@ -265,7 +268,151 @@
                 window.renderPersonDetailSection([], []);
             }
         }
-        
+
+        async fetchCorpRelatedPersons(custId) {
+            try {
+                const response = await fetch('/api/query_corp_related_persons/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: new URLSearchParams({ 
+                        cust_id: String(custId)
+                    })
+                });
+                
+                const relatedData = await response.json();
+                if (relatedData.success) {
+                    window.renderCorpRelatedSection(relatedData.columns || [], relatedData.rows || []);
+                } else {
+                    console.error('Corp related persons query failed:', relatedData.message);
+                    window.renderCorpRelatedSection([], []);
+                }
+            } catch (error) {
+                console.error('Corp related persons fetch failed:', error);
+                window.renderCorpRelatedSection([], []);
+            }
+        }
+
+        async fetchDuplicatePersons(custId, columns, row) {
+            // 컬럼 인덱스 찾기
+            const emailIdx = columns.indexOf('E-mail');
+            const phoneIdx = columns.indexOf('휴대폰 번호');
+            const addressIdx = columns.indexOf('거주주소');
+            const detailAddressIdx = columns.indexOf('거주상세주소');
+            
+            // 값 추출
+            let emailPrefix = '';
+            let phoneSuffix = '';
+            let address = '';
+            let detailAddress = '';
+            
+            if (emailIdx >= 0 && row[emailIdx]) {
+                const email = String(row[emailIdx]);
+                const atIndex = email.indexOf('@');
+                if (atIndex > 0) {
+                    emailPrefix = email.substring(0, atIndex);
+                }
+            }
+            
+            if (phoneIdx >= 0 && row[phoneIdx]) {
+                const phone = String(row[phoneIdx]);
+                if (phone.length >= 4) {
+                    phoneSuffix = phone.slice(-4);
+                }
+            }
+            
+            if (addressIdx >= 0) {
+                address = row[addressIdx] || '';
+            }
+            
+            if (detailAddressIdx >= 0) {
+                detailAddress = row[detailAddressIdx] || '';
+            }
+            
+            // 병렬로 두 쿼리 실행
+            const promises = [];
+            
+            // 이메일 기준 조회
+            if (emailPrefix) {
+                promises.push(
+                    fetch(window.URLS.query_duplicate_by_email, {  // URL 수정
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'X-CSRFToken': getCookie('csrftoken')
+                        },
+                        body: new URLSearchParams({
+                            email_prefix: emailPrefix,
+                            phone_suffix: phoneSuffix,
+                            current_cust_id: String(custId)
+                        })
+                    }).then(res => res.json())
+                );
+            }
+            
+            // 주소 기준 조회
+            if (address) {
+                promises.push(
+                    fetch(window.URLS.query_duplicate_by_address, {  // URL 수정
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'X-CSRFToken': getCookie('csrftoken')
+                        },
+                        body: new URLSearchParams({
+                            address: address,
+                            detail_address: detailAddress,
+                            phone_suffix: phoneSuffix,
+                            current_cust_id: String(custId)
+                        })
+                    }).then(res => res.json())
+                );
+            }
+            
+            if (promises.length === 0) {
+                window.renderDuplicatePersonsSection([], [], {});
+                return;
+            }
+            
+            try {
+                const results = await Promise.all(promises);
+                
+                // 결과 병합 (중복 제거)
+                const allRows = [];
+                const seenCustIds = new Set();
+                const columns = results[0]?.columns || [];
+                
+                for (const result of results) {
+                    if (result.success && result.rows) {
+                        const custIdIdx = result.columns?.indexOf('고객ID') || 0;
+                        
+                        for (const row of result.rows) {
+                            const custId = row[custIdIdx];
+                            if (!seenCustIds.has(custId)) {
+                                seenCustIds.add(custId);
+                                allRows.push(row);
+                            }
+                        }
+                    }
+                }
+                
+                // 매칭 정보
+                const matchCriteria = {
+                    email_prefix: emailPrefix || null,
+                    phone_suffix: phoneSuffix || null,
+                    address: address || null,
+                    detail_address: detailAddress || null
+                };
+                
+                window.renderDuplicatePersonsSection(columns, allRows, matchCriteria);
+                
+            } catch (error) {
+                console.error('Duplicate persons fetch failed:', error);
+                window.renderDuplicatePersonsSection([], [], {});
+            }
+        }
 
         async fetchAndRenderAllSections(data) {
             const { cols, rows, alertId, repRuleId, custIdForPerson, canonicalIds } = data;
@@ -278,7 +425,7 @@
                 window.renderPersonDetailSection([], []);
             }
 
-            // RULE 히스토리 조회 (수정된 부분)
+            // RULE 히스토리 조회
             if (canonicalIds.length > 0) {
                 const ruleKey = canonicalIds.slice().sort().join(',');
                 try {
@@ -293,12 +440,11 @@
                     
                     const historyData = await response.json();
                     if (historyData.success) {
-                        // searchedRule과 similar_list 정보도 함께 전달
                         window.renderRuleHistorySection(
                             historyData.columns || [], 
                             historyData.rows || [],
                             historyData.searched_rule || ruleKey,
-                            historyData.similar_list || null  // similar_list로 변경
+                            historyData.similar_list || null
                         );
                     }
                 } catch (error) {
@@ -313,80 +459,6 @@
             window.renderAlertHistSection(cols, rows, alertId);
             window.renderRuleDescSection(cols, rows, canonicalIds, repRuleId);
         }
-
-        async fetchDuplicatePersons(custId, columns, row) {
-        // 컬럼 인덱스 찾기
-        const emailIdx = columns.indexOf('E-mail');
-        const phoneIdx = columns.indexOf('휴대폰 번호');
-        const addressIdx = columns.indexOf('거주주소');
-        const detailAddressIdx = columns.indexOf('거주상세주소');
-        
-        // 값 추출
-        let emailPrefix = '';
-        let phoneSuffix = '';
-        let fullAddress = '';
-        
-        if (emailIdx >= 0 && row[emailIdx]) {
-            const email = String(row[emailIdx]);
-            const atIndex = email.indexOf('@');
-            if (atIndex > 0) {
-                emailPrefix = email.substring(0, atIndex);
-            }
-        }
-        
-        if (phoneIdx >= 0 && row[phoneIdx]) {
-            const phone = String(row[phoneIdx]);
-            if (phone.length >= 4) {
-                phoneSuffix = phone.slice(-4);
-            }
-        }
-        
-        if (addressIdx >= 0 && detailAddressIdx >= 0) {
-            const addr = row[addressIdx] || '';
-            const detailAddr = row[detailAddressIdx] || '';
-            if (addr || detailAddr) {
-                fullAddress = `${addr}_${detailAddr}`;
-            }
-        }
-        
-        // 검색 조건이 하나라도 있는 경우에만 조회
-        if (!emailPrefix && !phoneSuffix && !fullAddress) {
-            window.renderDuplicatePersonsSection([], [], {});
-            return;
-        }
-        
-        try {
-            const response = await fetch('/api/query_duplicate_persons/', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-CSRFToken': getCookie('csrftoken')
-                },
-                body: new URLSearchParams({
-                    email_prefix: emailPrefix,
-                    phone_suffix: phoneSuffix,
-                    full_address: fullAddress,
-                    current_cust_id: String(custId)
-                })
-            });
-            
-            const duplicateData = await response.json();
-            if (duplicateData.success) {
-                window.renderDuplicatePersonsSection(
-                    duplicateData.columns || [], 
-                    duplicateData.rows || [],
-                    duplicateData.match_criteria || {}
-                );
-            } else {
-                console.error('Duplicate persons query failed:', duplicateData.message);
-                window.renderDuplicatePersonsSection([], [], {});
-            }
-        } catch (error) {
-            console.error('Duplicate persons fetch failed:', error);
-            window.renderDuplicatePersonsSection([], [], {});
-        }
-        }
-
     }
 
     // ==================== 초기화 ====================

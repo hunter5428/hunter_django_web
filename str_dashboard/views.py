@@ -227,50 +227,61 @@ def query_person_detail_info(request, oracle_conn=None):
 @login_required
 @require_POST
 @require_db_connection
-def query_duplicate_persons(request, oracle_conn=None):
-    """동일한 정보를 가진 회원 조회"""
+def query_duplicate_by_email(request, oracle_conn=None):
+    """이메일 기준 중복 회원 조회"""
     email_prefix = request.POST.get('email_prefix', '').strip()
-    phone_suffix = request.POST.get('phone_suffix', '').strip()
-    full_address = request.POST.get('full_address', '').strip()
+    phone_suffix = request.POST.get('phone_suffix', '').strip() or None
     current_cust_id = request.POST.get('current_cust_id', '').strip()
     
-    if not current_cust_id:
-        return HttpResponseBadRequest('Missing current_cust_id.')
-    
-    # 최소 하나의 검색 조건은 있어야 함
-    if not (email_prefix or phone_suffix or full_address):
+    if not current_cust_id or not email_prefix:
         return JsonResponse({
             'success': True,
             'columns': [],
-            'rows': [],
-            'message': '검색 조건이 없습니다.'
+            'rows': []
         })
     
-    # NULL 값을 빈 문자열로 처리
-    email_prefix = email_prefix or ''
-    phone_suffix = phone_suffix or ''
-    full_address = full_address or ''
-    
-    # 쿼리 실행
     result = execute_query_with_error_handling(
         oracle_conn=oracle_conn,
-        sql_filename='person_duplicate_check.sql',
+        sql_filename='duplicate_by_email.sql',
         bind_params={
             ':email_prefix': '?',
             ':phone_suffix': '?',
-            ':full_address': '?',
             ':current_cust_id': '?'
         },
-        query_params=[email_prefix, phone_suffix, full_address, current_cust_id]
+        query_params=[email_prefix, phone_suffix, current_cust_id]
     )
     
-    # 매칭 정보 추가
-    if result['success'] and result.get('rows'):
-        result['match_criteria'] = {
-            'email_prefix': email_prefix if email_prefix else None,
-            'phone_suffix': phone_suffix if phone_suffix else None,
-            'full_address': full_address if full_address else None
-        }
+    return JsonResponse(result)
+
+
+@login_required
+@require_POST
+@require_db_connection
+def query_duplicate_by_address(request, oracle_conn=None):
+    """주소 기준 중복 회원 조회"""
+    address = request.POST.get('address', '').strip()
+    detail_address = request.POST.get('detail_address', '').strip()
+    phone_suffix = request.POST.get('phone_suffix', '').strip() or None
+    current_cust_id = request.POST.get('current_cust_id', '').strip()
+    
+    if not current_cust_id or not address:
+        return JsonResponse({
+            'success': True,
+            'columns': [],
+            'rows': []
+        })
+    
+    result = execute_query_with_error_handling(
+        oracle_conn=oracle_conn,
+        sql_filename='duplicate_by_address.sql',
+        bind_params={
+            ':address': '?',
+            ':detail_address': '?',
+            ':phone_suffix': '?',
+            ':current_cust_id': '?'
+        },
+        query_params=[address, detail_address, phone_suffix, current_cust_id]
+    )
     
     return JsonResponse(result)
 
@@ -374,3 +385,24 @@ def clear_db_session(request):
         if key in request.session:
             del request.session[key]
     logger.info("Database session cleared")
+
+
+@login_required
+@require_POST
+@require_db_connection
+def query_corp_related_persons(request, oracle_conn=None):
+    """법인 관련인 정보 조회"""
+    cust_id = request.POST.get('cust_id', '').strip()
+    
+    if not cust_id:
+        return HttpResponseBadRequest('Missing cust_id.')
+    
+    # 쿼리 실행
+    result = execute_query_with_error_handling(
+        oracle_conn=oracle_conn,
+        sql_filename='corp_related_persons.sql',
+        bind_params={':cust_id': '?'},
+        query_params=[cust_id]
+    )
+    
+    return JsonResponse(result)
