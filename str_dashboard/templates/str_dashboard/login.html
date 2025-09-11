@@ -1,0 +1,91 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>로그인 | STR TF APP</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <style>
+    :root{ --text:#eaeaea; --dim:#bdbdbd; }
+    *{ box-sizing:border-box; }
+    html, body { height:100%; margin:0; background:#000; color: var(--text); }
+
+    /* 전체 화면 컨테이너 */
+    .login-wrap{
+      position:relative;
+      min-height:100%;
+      display:flex; align-items:center; justify-content:center;
+      overflow:hidden;            /* 우주배경 영역 밖 숨김 */
+      padding:24px;
+      background:#000;            /* 별 배경 바탕색 */
+    }
+
+    /* 폼 카드 */
+    .login-card{
+      width: 100%; max-width: 380px;
+      background: rgba(26,26,26,.9);
+      border:1px solid #2a2a2a; border-radius:12px; padding:22px;
+      position:relative; z-index:1;   /* 별보다 위에 */
+      backdrop-filter: blur(2px);
+    }
+
+    .app-head{
+      display:flex;
+      flex-direction:column;   /* 세로 배치 */
+      align-items:center;      /* 가운데 정렬 */
+      gap:10px;
+      margin-bottom:10px;
+    }
+    .app-head img{ height:40px; }   /* 필요 시 크기도 조금 키울 수 있음 */
+
+
+    label{ display:block; font-size:13px; color: var(--dim); margin-bottom:6px; }
+    input{
+      width:100%; padding:10px 12px; border-radius:8px; border:1px solid #333; background:#0e0e0e; color:var(--text);
+      outline:none;
+    }
+    .field{ margin-bottom:14px; }
+    button{
+      width:100%; padding:11px 12px; border-radius:10px; border:1px solid #2a2a2a; background:#0f0f0f; color:var(--text);
+      font-weight:700; cursor:pointer;
+    }
+    button:hover{ background:#131313; }
+
+    /* 별 배경 컴포넌트가 이 페이지에서도 꽉 차게 보이게 */
+    .with-stars { position: relative; }
+    .with-stars > .star-background-container{ position:absolute; inset:0; z-index:0; pointer-events:none; }
+    .with-stars > *:not(.star-background-container){ position:relative; z-index:1; }
+  </style>
+</head>
+<body>
+  <div class="login-wrap with-stars">
+    {% include 'components/star_background_theme.html' %}
+    <div class="login-card">
+      <div class="app-head">
+        <img src="{% static 'assets/logo/doshiba_logo.png' %}" alt="logo">
+        <strong>STR TF APP</strong>
+      </div>
+
+      <form method="post" novalidate>
+        {% csrf_token %}
+
+        <div class="field">
+          <label for="id_username">아이디</label>
+          {{ form.username }}
+        </div>
+        <div class="field">
+          <label for="id_password">비밀번호</label>
+          {{ form.password }}
+        </div>
+
+        <button type="submit">로그인</button>
+      </form>
+      {% if form.non_field_errors %}
+      <script>
+        alert("올바른 사용자 이름과 비밀번호를 입력하십시오.\n두 필드 모두 대문자와 소문자를 구별합니다.");
+      </script>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

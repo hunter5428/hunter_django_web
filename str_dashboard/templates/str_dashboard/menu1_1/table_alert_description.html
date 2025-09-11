@@ -1,0 +1,67 @@
+<!-- 발생한 RULE의 정보(DISTINCT) -->
+<style>
+  #section_rule_distinct.section{ margin-top:18px; }
+  #section_rule_distinct .table-wrap{ margin-top:6px; }
+  #section_rule_distinct .table{ width:100%; border-collapse:collapse; border:1px solid #2a2a2a; border-radius:12px; overflow:hidden; background:#1a1a1a; }
+  #section_rule_distinct .table th, #section_rule_distinct .table td{ border-bottom:1px solid #2a2a2a; padding:10px 12px; text-align:left; color:#eaeaea; }
+  #section_rule_distinct .table th{ background:#111; color:#bdbdbd; font-weight:700; }
+  #section_rule_distinct .table tr:hover td{ background:#181818; }
+  #section_rule_distinct .empty-row{ color:#bdbdbd; padding:16px 12px; }
+  /* 대표 RULE 강조 */
+  #section_rule_distinct .table tr.rep-row td { background:#383838 !important; }
+</style>
+
+<div id="section_rule_distinct" class="section" style="display:none;">
+  <h3>발생한 RULE의 정보(DISTINCT)</h3>
+  <div class="table-wrap" id="result_table_rule_distinct"></div>
+</div>
+
+<script>
+  // canonicalIds: ‘발생 내역’ 기준으로 뽑은 DISTINCT RULE_ID 순서, repRuleId: 대표 RULE
+  window.renderRuleDescSection = function(cols, rows, canonicalIds, repRuleId){
+    const section = document.getElementById('section_rule_distinct');
+    const wrap    = document.getElementById('result_table_rule_distinct');
+
+    const idx = {
+      STR_RULE_ID: cols.indexOf('STR_RULE_ID'),
+      STR_RULE_DTL_EXP: cols.indexOf('STR_RULE_DTL_EXP'),
+      STR_RULE_EXTR_COND_CTNT: cols.indexOf('STR_RULE_EXTR_COND_CTNT'),
+      AML_BSS_CTNT: cols.indexOf('AML_BSS_CTNT'),
+    };
+
+    section.style.display = 'block';
+    if (!rows.length || Object.values(idx).some(v=>v<0)){
+      wrap.innerHTML = '<div class="card empty-row">결과가 없습니다.</div>';
+      return;
+    }
+
+    // RULE_ID → 대표 설명 1건
+    const seen = new Map(); // id -> [id, dtl, extr, aml]
+    for (const r of rows){
+      const key = r[idx.STR_RULE_ID];
+      if (!seen.has(key)){
+        seen.set(key, [
+          r[idx.STR_RULE_ID],
+          r[idx.STR_RULE_DTL_EXP],
+          r[idx.STR_RULE_EXTR_COND_CTNT],
+          r[idx.AML_BSS_CTNT],
+        ]);
+      }
+    }
+
+    // 출력 순서: canonicalIds(‘발생 내역’ 기준)을 그대로 사용
+    const orderedIds = (Array.isArray(canonicalIds) && canonicalIds.length)
+      ? canonicalIds
+      : [...seen.keys()];
+
+    const header = ['STR_RULE_ID','STR_RULE_DTL_EXP','STR_RULE_EXTR_COND_CTNT','AML_BSS_CTNT'];
+    const thead  = '<tr>' + header.map(h=>`<th>${h}</th>`).join('') + '</tr>';
+    const tbody  = orderedIds.map(id=>{
+      const arr = seen.get(id) || [id, '', '', '']; // 자리 유지
+      const cls = (repRuleId && String(id) === String(repRuleId)) ? ' class="rep-row"' : '';
+      return `<tr${cls}>` + arr.map(v=>`<td>${(v==null)?'':v}</td>`).join('') + `</tr>`;
+    }).join('');
+
+    wrap.innerHTML = `<table class="table"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+  };
+</script>

@@ -1,0 +1,57 @@
+{% load static %}
+
+<div class="star-background-container" aria-hidden="true">
+  <div class="stars-layer stars-layer-1"></div>
+  <div class="stars-layer stars-layer-2"></div>
+  <div class="stars-layer stars-layer-3"></div>
+</div>
+
+<style>
+  /* 이 컴포넌트는 .with-stars 컨테이너 안에서만 동작 */
+  .with-stars { position: relative; }
+  .with-stars > .star-background-container {
+    position: absolute; inset: 0;
+    z-index: 0; pointer-events: none; background: transparent; overflow: hidden;
+  }
+  .with-stars > *:not(.star-background-container) { position: relative; z-index: 1; }
+
+  .star-background-container .stars-layer {
+    position: absolute; inset: 0; background-repeat: repeat; animation: twinkle linear infinite;
+  }
+
+  .stars-layer-1 {
+    background-image:
+      radial-gradient(2px 2px at 20px 30px, #ffffff, transparent),
+      radial-gradient(2px 2px at 40px 70px, #ffffff, transparent),
+      radial-gradient(1px 1px at 50px 50px, #ffffff, transparent),
+      radial-gradient(1px 1px at 80px 10px, #ffffff, transparent),
+      radial-gradient(2px 2px at 130px 80px, #ffffff, transparent),
+      radial-gradient(1px 1px at 110px 40px, #ffffff, transparent);
+    background-size: 200px 200px; animation-duration: 3s; opacity: 0.8;
+  }
+  .stars-layer-2 {
+    background-image:
+      radial-gradient(3px 3px at 25px 50px, #ffffff, transparent),
+      radial-gradient(2px 2px at 75px 90px, #ffffff, transparent),
+      radial-gradient(3px 3px at 120px 30px, #ffffff, transparent),
+      radial-gradient(2px 2px at 170px 120px, #ffffff, transparent),
+      radial-gradient(1px 1px at 60px 140px, #ffffff, transparent);
+    background-size: 250px 250px; animation-duration: 5s; animation-delay: 1s; opacity: 0.6;
+  }
+  .stars-layer-3 {
+    background-image:
+      radial-gradient(4px 4px at 100px 100px, #ffffff, transparent),
+      radial-gradient(3px 3px at 180px 40px, #ffffff, transparent),
+      radial-gradient(2px 2px at 30px 160px, #ffffff, transparent),
+      radial-gradient(4px 4px at 290px 190px, #ffffff, transparent);
+    background-size: 300px 300px; animation-duration: 7s; animation-delay: 2s; opacity: 0.4;
+  }
+
+  @keyframes twinkle{
+    0%{opacity:.3; transform: translateY(0)}
+    25%{opacity:.8}
+    50%{opacity:.5; transform: translateY(-.5px)}
+    75%{opacity:1}
+    100%{opacity:.3; transform: translateY(0)}
+  }
+</style>

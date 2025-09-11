@@ -1,0 +1,14 @@
+<aside class="app-sidebar with-stars" aria-label="Sidebar">
+  {% include 'components/star_background_theme.html' %}
+
+  <div class="menu-section">
+    <div class="menu-top" data-topmenu="menu1" role="button" tabindex="0" aria-label="DATA SELECTION">
+      DATA SELECTION
+    </div>
+
+    <!-- 하위 메뉴: 기본은 접힘 (base.css에서 .menu-top.active + .submenu {display:block}) -->
+    <div class="submenu" aria-label="submenu of DATA SELECTION">
+      <a href="/menu1/menu1_1/" data-submenu="menu1_1">ALERT ID</a>
+    </div>
+  </div>
+</aside>

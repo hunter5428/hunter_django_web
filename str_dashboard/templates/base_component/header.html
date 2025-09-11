@@ -1,0 +1,43 @@
+{% load static %}
+<header class="app-header with-stars">
+  {% include 'components/star_background_theme.html' %}
+
+  <!-- 좌측: 로고(토글 버튼) -->
+  <button id="logo-toggle" class="logo-btn" type="button" aria-label="사이드바 열기/닫기" title="사이드바 열기/닫기">
+    <img id="logo-img" src="{% static 'assets/logo/doshiba_logo.png' %}" alt="STR TF APP 로고">
+  </button>
+
+  <!-- 제목: 홈 이동 -->
+  <a id="app-title-link" href="{% url 'home' %}" class="app-title" role="link">STR TF APP</a>
+
+  <!-- 우측 공간 & 로그아웃(POST, 아이콘 버튼) -->
+  <div class="header-spacer"></div>
+  <form id="logout-form" action="{% url 'logout' %}" method="post" style="margin:0;">
+    {% csrf_token %}
+    <button type="submit" id="logout-btn" class="logout-icon-btn" aria-label="로그아웃" title="로그아웃">
+      <!-- 심볼: 나가기 아이콘 (옅은 회색, hover 시 밝아짐) -->
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+        <path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4"
+              fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M14 16l4-4-4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M8 12h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </form>
+
+  <!-- 아이콘 전용 버튼 스타일(헤더에 삽입) -->
+  <style>
+    .logout-icon-btn{
+      display:inline-flex; align-items:center; justify-content:center;
+      width:36px; height:36px;
+      background: transparent;
+      color:#bdbdbd;           /* 옅은 회색 */
+      border:1px solid #2a2a2a;
+      border-radius:8px;
+      cursor:pointer;
+      transition: background .15s ease, color .15s ease, border-color .15s ease;
+    }
+    .logout-icon-btn:hover{ background:#141414; color:#eaeaea; border-color:#3a3a3a; }
+    .logout-icon-btn:focus-visible{ outline:2px solid #2a2a2a; }
+  </style>
+</header>

@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% load static %}
+{% block content %}
+<style>
+  .top-row{ display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+  .btn{ display:inline-flex; align-items:center; gap:8px; padding:10px 14px; border-radius:10px;
+        background:#0f0f0f; border:1px solid #2a2a2a; color:#eaeaea; cursor:pointer; font-weight:700; }
+  .btn:hover{ background:#151515; }
+  .badge{ display:inline-flex; padding:6px 10px; border-radius:999px; font-size:12px; font-weight:700;
+          border:1px solid #2a2a2a; background:#101010; color:#bdbdbd; }
+  .badge.ok{ background:#0f2314; color:#4caf50; border-color:#214a2c; }
+  .query-row{ display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+  .label-chip{ padding:8px 12px; border-radius:8px; background:#1a1a1a; border:1px solid #2a2a2a; color:#eaeaea; font-weight:700; }
+  .form-input{ min-width:220px; padding:10px 12px; border-radius:8px; border:1px solid #333;
+               background:#0e0e0e; color:#eaeaea; outline:none; flex:1 1 280px; }
+
+  .section{ margin-top:18px; }
+  .section h3{
+    margin:0 0 10px 0;
+    font-size:16px; font-weight:800; color:#eaeaea;
+    display:inline-block; padding:8px 12px; border-radius:8px;
+    background:#1a1a1a; border:1px solid #2a2a2a;
+  }
+
+  .modal-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:3000; }
+  .modal{ width:100%; max-width:560px; background:#1a1a1a; border:1px solid #2a2a2a; border-radius:12px; padding:18px; }
+  .modal h3{ margin:0 0 12px 0; }
+  .grid{ display:grid; grid-template-columns:160px 1fr; gap:10px 12px; }
+  .grid label{ color:#bdbdbd; font-size:13px; align-self:center; }
+  .grid input{ width:100%; padding:10px 12px; border-radius:8px; border:1px solid #333; background:#0e0e0e; color:#eaeaea; outline:none; }
+  .modal-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+  .btn-secondary{ background:#0e0e0e; }
+  .btn-primary{ background:#1a1a1a; border-color:#2a2a2a; color:#4fc3f7; }
+  .btn-primary:hover{ background:#222; }
+</style>
+
+<div class="top-row">
+  <button class="btn" id="btn-open-db-modal">DB Connection</button>
+  {% if db_status == 'ok' %}
+    <span id="db-status" class="badge ok">연결 완료</span>
+  {% else %}
+    <span id="db-status" class="badge">연결 필요</span>
+  {% endif %}
+</div>
+
+<div class="query-row">
+  <span class="label-chip">ALERT ID</span>
+  <input id="alert_id_input" type="text" class="form-input" placeholder="ALERT ID를 입력하세요">
+  <button class="btn" id="alert_id_search_btn">조회</button>
+</div>
+
+<!-- 섹션: 고객정보 → RULE_ID_히스토리 → 의심거래 객관식 → 발생 내역 → DISTINCT -->
+{% include "str_dashboard/menu1_1/person_info.html" %}
+{% include "str_dashboard/menu1_1/rule_historic_str.html" %}
+{% include "str_dashboard/menu1_1/alert_critical_info.html" %}
+{% include "str_dashboard/menu1_1/table_alert_hist.html" %}
+{% include "str_dashboard/menu1_1/table_alert_description.html" %}
+
+<!-- 모달 -->
+<div class="modal-backdrop" id="db-modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="db-modal-title">
+    <h3 id="db-modal-title">오라클 연결 설정</h3>
+    <div class="grid">
+      <label for="host">host</label> <input id="host" type="text" value="{{ default_host }}">
+      <label for="port">port</label> <input id="port" type="text" value="{{ default_port }}">
+      <label for="service_name">service name</label> <input id="service_name" type="text" value="{{ default_service }}">
+      <label for="username">user name</label> <input id="username" type="text" value="{{ default_username }}">
+      <label for="password">pass word</label> <input id="password" type="password" value="">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="btn-close-db-modal">뒤로</button>
+      <button class="btn btn-primary" id="btn-test-conn">연결 확인</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const $ = (sel)=>document.querySelector(sel);
+  const callIf = (fn, ...args)=>{ if(typeof window[fn]==='function') window[fn](...args); };
+
+  /* 모달 */
+  const modal = $('#db-modal'), openBtn=$('#btn-open-db-modal'), closeBtn=$('#btn-close-db-modal'), testBtn=$('#btn-test-conn'), statusBadge=$('#db-status');
+  const openModal=()=> modal.style.display='flex', closeModal=()=> modal.style.display='none';
+  const getCookie=(n)=>{ const v=`; ${document.cookie}`; const p=v.split(`; ${n}=`); return p.length===2? decodeURIComponent(p.pop().split(';').shift()):undefined; };
+  const csrftoken = getCookie('csrftoken');
+  openBtn.addEventListener('click', openModal);
+  closeBtn.addEventListener('click', closeModal);
+  modal.addEventListener('click', (e)=>{ if(e.target===modal) closeModal(); });
+
+  testBtn.addEventListener('click', async ()=>{
+    const host=$('#host').value.trim(), port=$('#port').value.trim(), service_name=$('#service_name').value.trim(),
+          username=$('#username').value.trim(), password=$('#password').value;
+    if(!host||!port||!service_name||!username||!password){ alert('모든 항목을 입력해주세요.'); return; }
+    try{
+      const resp=await fetch("{% url 'test_oracle_connection' %}",{
+        method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded','X-CSRFToken':csrftoken},
+        body:new URLSearchParams({host,port,service_name,username,password})
+      });
+      const data=await resp.json();
+      if(data.success){ alert('연결에 성공했습니다'); closeModal(); if(statusBadge){statusBadge.textContent='연결 완료'; statusBadge.classList.add('ok');}}
+      else{ alert(data.message||'연결에 실패했습니다'); }
+    }catch(err){ alert('연결에 실패했습니다'); console.error(err); }
+  });
+
+  /* 조회 */
+  const searchBtn = $('#alert_id_search_btn');
+  if (searchBtn){
+    searchBtn.addEventListener('click', async ()=>{
+      const alert_id = ($('#alert_id_input')||{}).value.trim();
+      if(!alert_id){ alert('ALERT ID를 입력하세요.'); return; }
+
+      try{
+        // 1) ALERT/RULE 결과
+        const resp=await fetch("{% url 'query_alert_info' %}",{
+          method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded','X-CSRFToken':csrftoken},
+          body:new URLSearchParams({alert_id})
+        });
+        const data=await resp.json();
+        if(!data.success){ alert(data.message||'조회 실패'); return; }
+
+        const cols=(data.columns||[]).map(c=>String(c||'').toUpperCase());
+        const rows=data.rows||[];
+
+        // 인덱스
+        const idxAlert=cols.indexOf('STR_ALERT_ID'), idxRule=cols.indexOf('STR_RULE_ID'), idxCust=cols.indexOf('CUST_ID');
+
+        // 대표 RULE / 고객ID
+        let repRuleId=null, custIdForPerson=null;
+        if(idxAlert>=0 && idxRule>=0){
+          const repRow=rows.find(r=>String(r[idxAlert])===alert_id);
+          repRuleId = repRow ? String(repRow[idxRule]) : null;
+          if(repRow && idxCust>=0) custIdForPerson = repRow[idxCust];
+        }
+        if(!custIdForPerson && rows.length && idxCust>=0) custIdForPerson = rows[0][idxCust];
+
+        // 발생 내역 등장 순서대로 DISTINCT RULE_ID (표시와 동일 기준)
+        const canonicalIds=[];
+        if(idxRule>=0){
+          const seen=new Set();
+          for(const r of rows){ const v=r[idxRule]; if(v==null) continue; const s=String(v).trim();
+            if(!seen.has(s)){ seen.add(s); canonicalIds.push(s); } }
+        }
+
+        // 2) 고객정보(최상단)
+        if (custIdForPerson){
+          try{
+            const resp2=await fetch("{% url 'query_person_info' %}",{
+              method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded','X-CSRFToken':csrftoken},
+              body:new URLSearchParams({cust_id:String(custIdForPerson)})
+            });
+            const data2=await resp2.json();
+            callIf('renderPersonInfoSection', data2.success? (data2.columns||[]) : [], data2.success? (data2.rows||[]) : []);
+          }catch(e){
+            callIf('renderPersonInfoSection', [], []); console.error(e);
+          }
+        } else {
+          callIf('renderPersonInfoSection', [], []);
+        }
+
+        // 3) RULE_ID_히스토리 탐색 — 비교키는 항상 오름차순으로 정렬하여 생성
+        const ruleKey = canonicalIds.map(s=>String(s).trim()).filter(Boolean).sort().join(',');
+        try{
+          const resp3=await fetch("{% url 'rule_history_search' %}",{
+            method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded','X-CSRFToken':csrftoken},
+            body:new URLSearchParams({rule_key: ruleKey})
+          });
+          const data3=await resp3.json();
+          callIf('renderRuleHistorySection', data3.success? (data3.columns||[]) : [], data3.success? (data3.rows||[]) : []);
+        }catch(e){
+          callIf('renderRuleHistorySection', [], []); console.error(e);
+        }
+
+        // 4) 나머지 섹션 렌더 (정렬/강조 동일)
+        callIf('renderObjectivesSection', cols, rows, JSON.parse('{{ rule_obj_map_json|escapejs }}' || '{}'), canonicalIds, repRuleId);
+        callIf('renderAlertHistSection',  cols, rows, alert_id);
+        callIf('renderRuleDescSection',   cols, rows, canonicalIds, repRuleId);
+
+      }catch(err){
+        alert('조회 실패'); console.error(err);
+      }
+    });
+  }
+})();
+</script>
+{% endblock %}

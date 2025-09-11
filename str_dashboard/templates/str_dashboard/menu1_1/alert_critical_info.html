@@ -1,0 +1,54 @@
+<!-- 의심거래 객관식 정보 (맨 위 섹션) -->
+<style>
+  #section_objectives.section{ margin-top:18px; }
+  #section_objectives .table-wrap{ margin-top:6px; }
+  #section_objectives .table{ width:100%; border-collapse:collapse; border:1px solid #2a2a2a; border-radius:12px; overflow:hidden; background:#1a1a1a; }
+  #section_objectives .table th, #section_objectives .table td{ border-bottom:1px solid #2a2a2a; padding:10px 12px; text-align:left; color:#eaeaea; }
+  #section_objectives .table th{ background:#111; color:#bdbdbd; font-weight:700; }
+  #section_objectives .table tr:hover td{ background:#181818; }
+  #section_objectives .empty-row{ color:#bdbdbd; padding:16px 12px; }
+  #section_objectives .objective-cell{ white-space:pre-line; }
+  /* 대표 RULE 강조 */
+  #section_objectives .table tr.rep-row td { background:#383838 !important; }
+</style>
+
+<div id="section_objectives" class="section" style="display:none;">
+  <h3>의심거래 객관식 정보</h3>
+  <div class="table-wrap" id="result_table_objectives"></div>
+</div>
+
+<script>
+  // cols/rows: 조회 결과, RULE_OBJ_MAP: 규칙별 객관식 라벨, canonicalIds: ‘발생 내역’ 순서로 추출된 DISTINCT RULE_ID, repRuleId: 대표 RULE
+  window.renderObjectivesSection = function(cols, rows, RULE_OBJ_MAP, canonicalIds, repRuleId){
+    const section = document.getElementById('section_objectives');
+    const wrap    = document.getElementById('result_table_objectives');
+    const idx_rule_id = cols.indexOf('STR_RULE_ID');
+    const idx_rule_nm = cols.indexOf('STR_RULE_NM');
+
+    section.style.display = 'block';
+    if (!rows.length || idx_rule_id < 0 || idx_rule_nm < 0){
+      wrap.innerHTML = '<div class="card empty-row">결과가 없습니다.</div>';
+      return;
+    }
+    // RULE_ID -> RULE_NM 대표 매핑
+    const ruleNameById = new Map();
+    for (const r of rows){
+      const rid = r[idx_rule_id];
+      if (!ruleNameById.has(rid)) ruleNameById.set(rid, r[idx_rule_nm]);
+    }
+    // 출력 순서: canonicalIds(‘발생 내역’ 기준) 우선 사용
+    const orderedIds = (Array.isArray(canonicalIds) && canonicalIds.length)
+      ? canonicalIds
+      : [...ruleNameById.keys()]; // fallback (이미 DB가 오름차순 반환)
+
+    const header = ['STR_RULE_ID','STR_RULE_NM','객관식정보'];
+    const thead  = '<tr>' + header.map(h=>`<th>${h}</th>`).join('') + '</tr>';
+    const tbody  = orderedIds.map(rid=>{
+      const nm  = ruleNameById.get(rid) ?? '';
+      const obj = (RULE_OBJ_MAP && RULE_OBJ_MAP[rid]) ? RULE_OBJ_MAP[rid].join('\n') : '-';
+      const cls = (repRuleId && String(rid) === String(repRuleId)) ? ' class="rep-row"' : '';
+      return `<tr${cls}><td>${rid??''}</td><td>${nm??''}</td><td class="objective-cell">${obj}</td></tr>`;
+    }).join('');
+    wrap.innerHTML = `<table class="table"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+  };
+</script>
