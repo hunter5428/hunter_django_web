@@ -231,15 +231,26 @@ def rule_history_search(request, oracle_conn=None):
         matching_rows = df1[df1["STR_RULE_ID_LIST"] == rule_key]
         
         # 결과 변환
-        columns = list(matching_rows.columns)
+        columns = list(matching_rows.columns) if not matching_rows.empty else list(df1.columns) if not df1.empty else []
         rows = matching_rows.values.tolist()
         
+        # 결과가 없는 경우 유사 조합 검색
+        similar_list = []
+        if len(rows) == 0 and not df1.empty:
+            from .queries.rule_historic_search import find_most_similar_rule_combinations
+            similar_list = find_most_similar_rule_combinations(rule_key, df1)
+        
         logger.info(f"Rule history search completed. Found {len(rows)} matching rows for key: {rule_key}")
+        
+        if similar_list:
+            logger.info(f"Found {len(similar_list)} similar combinations with similarity: {similar_list[0]['similarity']:.2f}")
         
         return JsonResponse({
             'success': True,
             'columns': columns,
-            'rows': rows
+            'rows': rows,
+            'searched_rule': rule_key,
+            'similar_list': similar_list  # 리스트로 변경
         })
         
     except Exception as e:
@@ -248,10 +259,8 @@ def rule_history_search(request, oracle_conn=None):
             'success': False,
             'message': f'히스토리 조회 실패: {e}'
         })
-
-
-# 추가 유틸리티 함수들
-
+    
+    
 def get_db_status(request) -> dict:
     """현재 데이터베이스 연결 상태 조회"""
     db_info = request.session.get('db_conn')

@@ -195,9 +195,47 @@
             return { cols, rows, alertId, repRuleId, custIdForPerson, canonicalIds };
         }
 
+        async fetchPersonInfo(custId) {
+            try {
+                const response = await fetch(window.URLS.query_person, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: new URLSearchParams({ cust_id: String(custId) })
+                });
+                
+                const personData = await response.json();
+                if (personData.success) {
+                    window.renderPersonInfoSection(personData.columns || [], personData.rows || []);
+                    
+                    // 고객 구분 추출 (첫 번째 컬럼이 '고객구분'인 경우)
+                    if (personData.columns && personData.rows && personData.rows.length > 0) {
+                        const custTypeIdx = personData.columns.indexOf('고객구분');
+                        if (custTypeIdx >= 0) {
+                            const custType = personData.rows[0][custTypeIdx];
+                            // 고객 상세 정보도 조회
+                            await this.fetchPersonDetailInfo(custId, custType);
+                        } else {
+                            // 고객구분이 없으면 기본값으로 조회
+                            await this.fetchPersonDetailInfo(custId, '개인');
+                        }
+                    }
+                } else {
+                    window.renderPersonInfoSection([], []);
+                    window.renderPersonDetailSection([], []);
+                }
+            } catch (error) {
+                console.error('Person info fetch failed:', error);
+                window.renderPersonInfoSection([], []);
+                window.renderPersonDetailSection([], []);
+            }
+        }
+
         async fetchPersonDetailInfo(custId, custType) {
             try {
-                const response = await fetch(window.URLS.query_person_detail || '/api/query_person_detail_info/', {
+                const response = await fetch('/api/query_person_detail_info/', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded',
@@ -212,6 +250,9 @@
                 const detailData = await response.json();
                 if (detailData.success) {
                     window.renderPersonDetailSection(detailData.columns || [], detailData.rows || []);
+                } else {
+                    console.error('Person detail query failed:', detailData.message);
+                    window.renderPersonDetailSection([], []);
                 }
             } catch (error) {
                 console.error('Person detail info fetch failed:', error);
@@ -222,31 +263,15 @@
         async fetchAndRenderAllSections(data) {
             const { cols, rows, alertId, repRuleId, custIdForPerson, canonicalIds } = data;
 
-            // 고객 정보 조회
+            // 고객 정보 조회 (기본 정보 + 상세 정보)
             if (custIdForPerson) {
-                try {
-                    const response = await fetch(window.URLS.query_person, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                            'X-CSRFToken': getCookie('csrftoken')
-                        },
-                        body: new URLSearchParams({ cust_id: String(custIdForPerson) })
-                    });
-                    
-                    const personData = await response.json();
-                    if (personData.success) {
-                        window.renderPersonInfoSection(personData.columns || [], personData.rows || []);
-                    }
-                } catch (error) {
-                    console.error('Person info fetch failed:', error);
-                    window.renderPersonInfoSection([], []);
-                }
+                await this.fetchPersonInfo(custIdForPerson);
             } else {
                 window.renderPersonInfoSection([], []);
+                window.renderPersonDetailSection([], []);
             }
 
-            // RULE 히스토리 조회
+            // RULE 히스토리 조회 (수정된 부분)
             if (canonicalIds.length > 0) {
                 const ruleKey = canonicalIds.slice().sort().join(',');
                 try {
@@ -261,11 +286,17 @@
                     
                     const historyData = await response.json();
                     if (historyData.success) {
-                        window.renderRuleHistorySection(historyData.columns || [], historyData.rows || []);
+                        // searchedRule과 similar_list 정보도 함께 전달
+                        window.renderRuleHistorySection(
+                            historyData.columns || [], 
+                            historyData.rows || [],
+                            historyData.searched_rule || ruleKey,
+                            historyData.similar_list || null  // similar_list로 변경
+                        );
                     }
                 } catch (error) {
                     console.error('Rule history fetch failed:', error);
-                    window.renderRuleHistorySection([], []);
+                    window.renderRuleHistorySection([], [], ruleKey, null);
                 }
             }
 

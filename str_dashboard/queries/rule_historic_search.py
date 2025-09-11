@@ -2,6 +2,8 @@
 """
 RULE_ID_히스토리 탐색 - 개선된 버전
 더 나은 에러 처리와 성능 최적화 포함
+중첩 괄호 처리 개선
+유사 RULE 조합 검색 기능 추가 (동일 유사도 모두 표시)
 """
 
 import re
@@ -75,9 +77,6 @@ LEFT JOIN LWER W ON W.STR_RPT_MNGT_NO = R.STR_RPT_MNGT_NO
 ORDER BY R.STR_RPT_MNGT_NO
 """
 
-# 패턴 컴파일 (모듈 로드 시 한 번만)
-_PAIR_PATTERN = re.compile(r"\(\s*(\d+)\s*,\s*(.*?)\s*\)")
-
 
 class RuleHistorySearchError(Exception):
     """Rule 히스토리 검색 관련 예외"""
@@ -87,6 +86,7 @@ class RuleHistorySearchError(Exception):
 def parse_pairs(cell: Any) -> List[Tuple[int, str]]:
     """
     '(num, text), (num2, text2)...' 형식의 문자열을 파싱
+    중첩된 괄호를 올바르게 처리
     
     Args:
         cell: 파싱할 셀 값
@@ -102,14 +102,46 @@ def parse_pairs(cell: Any) -> List[Tuple[int, str]]:
         return []
     
     pairs = []
-    for match in _PAIR_PATTERN.finditer(cell_str):
-        try:
-            num = int(match.group(1))
-            text = match.group(2).strip()
-            pairs.append((num, text))
-        except (ValueError, AttributeError):
-            logger.warning(f"Failed to parse pair from: {match.group(0)}")
-            continue
+    i = 0
+    
+    while i < len(cell_str):
+        # '(' 찾기
+        if cell_str[i] == '(':
+            # 괄호 카운터
+            paren_count = 1
+            start_idx = i + 1
+            j = i + 1
+            
+            # 매칭되는 ')' 찾기
+            while j < len(cell_str) and paren_count > 0:
+                if cell_str[j] == '(':
+                    paren_count += 1
+                elif cell_str[j] == ')':
+                    paren_count -= 1
+                j += 1
+            
+            # 괄호 내용 추출
+            if paren_count == 0:
+                content = cell_str[start_idx:j-1].strip()
+                
+                # 첫 번째 콤마를 기준으로 숫자와 텍스트 분리
+                first_comma_idx = content.find(',')
+                if first_comma_idx > 0:
+                    num_str = content[:first_comma_idx].strip()
+                    text_str = content[first_comma_idx+1:].strip()
+                    
+                    try:
+                        num = int(num_str)
+                        pairs.append((num, text_str))
+                    except ValueError:
+                        logger.warning(f"Failed to parse number from: {num_str}")
+                
+                i = j
+            else:
+                # 매칭되는 괄호를 찾지 못한 경우
+                i += 1
+        else:
+            i += 1
     
     return pairs
 
@@ -133,6 +165,98 @@ def format_pairs_sorted_unique(pairs: List[Tuple[int, str]]) -> str:
     
     # 문자열로 변환
     return ", ".join(f"({n}, {t})" for n, t in sorted_pairs)
+
+
+def calculate_rule_similarity(rule_set1: set, rule_set2: set) -> float:
+    """
+    두 RULE 집합 간의 Jaccard 유사도 계산
+    
+    Args:
+        rule_set1: 첫 번째 RULE ID 집합
+        rule_set2: 두 번째 RULE ID 집합
+    
+    Returns:
+        유사도 점수 (0.0 ~ 1.0)
+    """
+    if not rule_set1 or not rule_set2:
+        return 0.0
+    
+    intersection = len(rule_set1 & rule_set2)
+    union = len(rule_set1 | rule_set2)
+    
+    if union == 0:
+        return 0.0
+    
+    return intersection / union
+
+
+def find_most_similar_rule_combinations(target_rule_key: str, df: pd.DataFrame, max_results: int = 5) -> List[Dict[str, Any]]:
+    """
+    가장 유사한 RULE 조합들 찾기 (동일 유사도 모두 포함)
+    
+    Args:
+        target_rule_key: 검색 대상 RULE_ID_LIST (콤마로 구분)
+        df: 전체 집계 데이터 DataFrame
+        max_results: 최대 반환 개수
+    
+    Returns:
+        유사한 조합들의 리스트
+    """
+    if df.empty:
+        return []
+    
+    # 타겟 RULE 집합 생성
+    target_rules = set(target_rule_key.split(','))
+    
+    # 단일 RULE인 경우 유사도 검색 생략
+    if len(target_rules) < 2:
+        return []
+    
+    # 모든 후보에 대한 유사도 계산
+    candidates = []
+    
+    for _, row in df.iterrows():
+        rule_list = row['STR_RULE_ID_LIST']
+        if pd.isna(rule_list) or rule_list == target_rule_key:
+            continue
+        
+        candidate_rules = set(rule_list.split(','))
+        
+        # 유사도 계산
+        similarity = calculate_rule_similarity(target_rules, candidate_rules)
+        
+        if similarity > 0:  # 유사도가 0보다 큰 경우만
+            candidates.append({
+                'rule_list': rule_list,
+                'similarity': similarity,
+                'count': row['STR_RULE_ID_NO_COUNT'],
+                'uper': row.get('STR_SSPC_UPER'),
+                'lwer': row.get('STR_SSPC_LWER')
+            })
+    
+    # 유사도로 정렬
+    candidates.sort(key=lambda x: (-x['similarity'], -x['count'], x['rule_list']))
+    
+    # 최소 유사도 임계값 (예: 0.3 = 30% 이상 일치)
+    min_similarity = 0.3
+    
+    # 최고 유사도 찾기
+    if candidates and candidates[0]['similarity'] >= min_similarity:
+        max_similarity = candidates[0]['similarity']
+        
+        # 최고 유사도와 동일한 모든 조합 반환 (최대 max_results개)
+        similar_combinations = []
+        for candidate in candidates:
+            if abs(candidate['similarity'] - max_similarity) < 0.001:  # 부동소수점 비교
+                similar_combinations.append(candidate)
+                if len(similar_combinations) >= max_results:
+                    break
+            elif candidate['similarity'] < max_similarity:
+                break  # 정렬되어 있으므로 더 낮은 유사도면 중단
+        
+        return similar_combinations
+    
+    return []
 
 
 def fetch_df_result_0(
@@ -303,7 +427,8 @@ def search_rule_history(
         password: 데이터베이스 비밀번호
     
     Returns:
-        {'success': True/False, 'columns': [...], 'rows': [...], 'message': '...'}
+        {'success': True/False, 'columns': [...], 'rows': [...], 
+         'message': '...', 'similar_list': [...]}
     """
     try:
         # 전체 데이터 조회
@@ -322,13 +447,26 @@ def search_rule_history(
         matching_df = df1[df1["STR_RULE_ID_LIST"] == rule_key]
         
         # 결과 변환
-        columns = list(matching_df.columns)
+        columns = list(matching_df.columns) if not matching_df.empty else []
         rows = matching_df.values.tolist()
+        
+        # 결과가 없는 경우 유사 조합 검색
+        if len(rows) == 0:
+            similar_list = find_most_similar_rule_combinations(rule_key, df1)
+            
+            return {
+                'success': True,
+                'columns': columns,
+                'rows': rows,
+                'searched_rule': rule_key,
+                'similar_list': similar_list  # 리스트로 변경
+            }
         
         return {
             'success': True,
             'columns': columns,
-            'rows': rows
+            'rows': rows,
+            'searched_rule': rule_key
         }
         
     except RuleHistorySearchError as e:

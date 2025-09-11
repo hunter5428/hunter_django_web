@@ -76,25 +76,51 @@
     background: #181818;
 }
 
-/* 2열 Key-Value 테이블 스타일 */
+/* ==================== 2열 Key-Value 테이블 스타일 ==================== */
+.table-kv-2col {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #1a1a1a;
+}
+
 .table-kv-2col th {
     width: 150px;
     background: #111;
     color: #bdbdbd;
     font-weight: 700;
     white-space: nowrap;
+    border-bottom: 1px solid #2a2a2a;
+    border-right: 1px solid #2a2a2a;
+    padding: 10px 12px;
+    text-align: left;
 }
 
 .table-kv-2col td {
     background: #1a1a1a;
     min-width: 200px;
+    border-bottom: 1px solid #2a2a2a;
+    border-right: 1px solid #2a2a2a;
+    padding: 10px 12px;
+    color: #eaeaea;
+}
+
+.table-kv-2col td:last-child {
+    border-right: none;
+}
+
+.table-kv-2col tr:last-child th,
+.table-kv-2col tr:last-child td {
+    border-bottom: none;
 }
 
 .table-kv-2col tr:hover td {
     background: #181818;
 }
 
-/* 섹션 토글 (접기/펼치기) */
+/* ==================== 섹션 토글 (접기/펼치기) ==================== */
 .section {
     margin-bottom: 20px; /* 섹션 간 여백 */
 }
@@ -105,6 +131,16 @@
     position: relative;
     padding-right: 30px;
     transition: all 0.2s ease;
+    display: inline-block;
+    padding: 8px 12px;
+    padding-right: 35px;
+    border-radius: 8px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    margin: 0 0 10px 0;
+    font-size: 16px;
+    font-weight: 800;
+    color: #eaeaea;
 }
 
 .section h3:hover {
@@ -120,8 +156,10 @@
     transform: translateY(-50%);
     font-size: 12px;
     transition: transform 0.3s ease;
+    color: #bdbdbd;
 }
 
+/* 접힌 상태 */
 .section.collapsed h3::after {
     transform: translateY(-50%) rotate(-90deg);
 }
@@ -130,6 +168,7 @@
     display: none;
 }
 
+/* 애니메이션 */
 .section .table-wrap {
     animation: slideDown 0.3s ease;
 }
@@ -249,6 +288,10 @@
         width: 120px;
     }
     
+    .table-kv-2col th {
+        width: 100px;
+    }
+    
     /* 모바일에서 스크롤 가능하도록 */
     .table-wrap {
         max-width: 100vw;
@@ -279,5 +322,9 @@
     .table tr.rep-row td,
     .table tr.highlighted td {
         background: #e0e0e0 !important;
+    }
+    
+    .section h3::after {
+        display: none;
     }
 }
