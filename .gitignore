@@ -1,0 +1,21 @@
+# Python 바이트코드
+__pycache__/
+*.pyc
+
+# 가상환경
+venv/
+*.env
+
+# 시스템 파일
+.DS_Store
+
+# 기타 불필요한 파일
+eval "$(ssh-agent -s)"
+eval "$(ssh-agent -s)".pub
+__pycache__/
+*.pyc
+venv/
+*.env
+.DS_Store
+eval "$(ssh-agent -s)"
+eval "$(ssh-agent -s)".pub
