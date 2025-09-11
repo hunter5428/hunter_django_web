@@ -11,8 +11,8 @@ import re
 import pandas as pd
 import jaydebeapi
 
+# SQL 주석을 Python 문자열 밖으로 이동
 SQL_BASE = r"""
-/* 1) RULE_ID 리스트 (오름차순, 중복 제거) */
 WITH R_SRC AS (
   SELECT DISTINCT STR_RPT_MNGT_NO, STR_RULE_ID
   FROM STR_ALERT_INFO_BASE
@@ -25,8 +25,6 @@ R AS (
   FROM R_SRC
   GROUP BY STR_RPT_MNGT_NO
 ),
-
-/* 2) 상위 패턴 (코드, 내용) 집계 — DISTINCT는 서브쿼리에서 해결 */
 UPER_SRC AS (
   SELECT DISTINCT
     L.STR_RPT_MNGT_NO,
@@ -45,8 +43,6 @@ UPER AS (
   FROM UPER_SRC
   GROUP BY STR_RPT_MNGT_NO
 ),
-
-/* 3) 하위 패턴 (코드, 내용) 집계 — DISTINCT는 서브쿼리에서 해결 */
 LWER_SRC AS (
   SELECT DISTINCT
     L.STR_RPT_MNGT_NO,
@@ -65,10 +61,9 @@ LWER AS (
   FROM LWER_SRC
   GROUP BY STR_RPT_MNGT_NO
 )
-
 SELECT
   R.STR_RPT_MNGT_NO,
-  R.STR_RULE_ID_LIST,   -- 항상 오름차순(알파벳)으로 결합됨
+  R.STR_RULE_ID_LIST,
   U.STR_SSPC_UPER,
   W.STR_SSPC_LWER
 FROM R
