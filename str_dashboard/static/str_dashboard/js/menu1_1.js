@@ -1,110 +1,15 @@
-{% extends "base.html" %}
-{% load static %}
+// str_dashboard/static/str_dashboard/js/menu1_1_simple.js
 
-{% block extra_css %}
-<link rel="stylesheet" href="{% static 'str_dashboard/css/menu1_1.css' %}">
-<link rel="stylesheet" href="{% static 'str_dashboard/css/table.component.css' %}">
-{% endblock %}
-
-{% block content %}
-<!-- 상단 컨트롤 영역 -->
-<div class="top-row">
-    <button class="btn" id="btn-open-db-modal">DB Connection</button>
-    {% if db_status == 'ok' %}
-        <span id="db-status" class="badge ok">연결 완료</span>
-    {% else %}
-        <span id="db-status" class="badge">연결 필요</span>
-    {% endif %}
-</div>
-
-<!-- 조회 영역 -->
-<div class="query-row">
-    <span class="label-chip">ALERT ID</span>
-    <input id="alert_id_input" type="text" class="form-input" placeholder="ALERT ID를 입력하세요">
-    <button class="btn" id="alert_id_search_btn">조회</button>
-</div>
-
-<!-- 섹션: 고객정보 -->
-<div id="section_person_info" class="section" style="display:none;">
-    <h3>고객 기본 정보</h3>
-    <div class="table-wrap" id="result_table_person_info"></div>
-</div>
-
-<!-- 섹션: RULE_ID_히스토리 -->
-<div id="section_rule_hist" class="section" style="display:none;">
-    <h3>RULE_ID_히스토리 탐색</h3>
-    <div class="table-wrap" id="result_table_rule_hist"></div>
-</div>
-
-<!-- 섹션: 의심거래 객관식 정보 -->
-<div id="section_objectives" class="section" style="display:none;">
-    <h3>의심거래 객관식 정보</h3>
-    <div class="table-wrap" id="result_table_objectives"></div>
-</div>
-
-<!-- 섹션: ALERT / RULE 발생 내역 -->
-<div id="section_alert_rule" class="section" style="display:none;">
-    <h3>ALERT / RULE 발생 내역</h3>
-    <div class="table-wrap" id="result_table_alert_rule"></div>
-</div>
-
-<!-- 섹션: 발생한 RULE의 정보(DISTINCT) -->
-<div id="section_rule_distinct" class="section" style="display:none;">
-    <h3>발생한 RULE의 정보(DISTINCT)</h3>
-    <div class="table-wrap" id="result_table_rule_distinct"></div>
-</div>
-
-<!-- 모달 -->
-<div class="modal-backdrop" id="db-modal">
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="db-modal-title">
-        <h3 id="db-modal-title">오라클 연결 설정</h3>
-        <div class="grid">
-            <label for="host">host</label> 
-            <input id="host" type="text" value="{{ default_host }}">
-            
-            <label for="port">port</label> 
-            <input id="port" type="text" value="{{ default_port }}">
-            
-            <label for="service_name">service name</label> 
-            <input id="service_name" type="text" value="{{ default_service }}">
-            
-            <label for="username">user name</label> 
-            <input id="username" type="text" value="{{ default_username }}">
-            
-            <label for="password">pass word</label> 
-            <input id="password" type="password" value="">
-        </div>
-        <div class="modal-actions">
-            <button class="btn btn-secondary" id="btn-close-db-modal">뒤로</button>
-            <button class="btn btn-primary" id="btn-test-conn">연결 확인</button>
-        </div>
-    </div>
-</div>
-{% endblock %}
-
-{% block extra_js %}
-<script>
-// 전역 변수 설정
-window.RULE_OBJ_MAP = {{ rule_obj_map_json|safe }};
-
-// URL 템플릿 태그를 JavaScript 변수로 전달
-window.URLS = {
-    test_connection: "{% url 'test_oracle_connection' %}",
-    query_alert: "{% url 'query_alert_info' %}",
-    query_person: "{% url 'query_person_info' %}",
-    rule_history: "{% url 'rule_history_search' %}"
-};
-</script>
-
-<!-- 테이블 컴포넌트 -->
-<script src="{% static 'str_dashboard/js/table.component.js' %}"></script>
-
-<!-- 메인 JavaScript (간소화 버전) -->
-<script>
+/**
+ * ALERT ID 조회 페이지 JavaScript (단순화 버전)
+ * - 테이블 컴포넌트 활용
+ * - 기존 UX 유지
+ * - 불필요한 기능 제거
+ */
 (function() {
     'use strict';
 
-    // 유틸리티
+    // ==================== 유틸리티 ====================
     const $ = (sel) => document.querySelector(sel);
     const getCookie = (name) => {
         const value = `; ${document.cookie}`;
@@ -112,29 +17,39 @@ window.URLS = {
         return parts.length === 2 ? decodeURIComponent(parts.pop().split(';').shift()) : undefined;
     };
 
-    // 모달 관리
+    // ==================== 모달 관리 ====================
     class ModalManager {
         constructor(modalId) {
             this.modal = $(modalId);
+            this.isOpen = false;
             this.init();
         }
 
         init() {
+            // 배경 클릭 시 닫기
             this.modal?.addEventListener('click', (e) => {
-                if (e.target === this.modal) this.close();
+                if (e.target === this.modal) {
+                    this.close();
+                }
             });
         }
 
         open() {
-            if (this.modal) this.modal.style.display = 'flex';
+            if (this.modal) {
+                this.modal.style.display = 'flex';
+                this.isOpen = true;
+            }
         }
 
         close() {
-            if (this.modal) this.modal.style.display = 'none';
+            if (this.modal) {
+                this.modal.style.display = 'none';
+                this.isOpen = false;
+            }
         }
     }
 
-    // DB 연결 관리
+    // ==================== DB 연결 관리 ====================
     class DBConnectionManager {
         constructor() {
             this.modal = new ModalManager('#db-modal');
@@ -143,15 +58,24 @@ window.URLS = {
         }
 
         init() {
-            $('#btn-open-db-modal')?.addEventListener('click', () => this.modal.open());
-            $('#btn-close-db-modal')?.addEventListener('click', () => this.modal.close());
-            $('#btn-test-conn')?.addEventListener('click', () => this.testConnection());
+            $('#btn-open-db-modal')?.addEventListener('click', () => {
+                this.modal.open();
+            });
+
+            $('#btn-close-db-modal')?.addEventListener('click', () => {
+                this.modal.close();
+            });
+
+            $('#btn-test-conn')?.addEventListener('click', () => {
+                this.testConnection();
+            });
         }
 
         async testConnection() {
             const fields = ['host', 'port', 'service_name', 'username', 'password'];
             const data = {};
 
+            // 입력값 검증
             for (const field of fields) {
                 const value = $(`#${field}`)?.value?.trim();
                 if (!value) {
@@ -162,7 +86,7 @@ window.URLS = {
             }
 
             try {
-                const response = await fetch(window.URLS.test_connection, {
+                const response = await fetch("{% url 'test_oracle_connection' %}", {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded',
@@ -199,7 +123,7 @@ window.URLS = {
         }
     }
 
-    // ALERT 조회 관리
+    // ==================== ALERT 조회 관리 ====================
     class AlertSearchManager {
         constructor() {
             this.searchBtn = $('#alert_id_search_btn');
@@ -208,9 +132,15 @@ window.URLS = {
         }
 
         init() {
-            this.searchBtn?.addEventListener('click', () => this.search());
+            this.searchBtn?.addEventListener('click', () => {
+                this.search();
+            });
+
+            // Enter 키로 검색
             this.inputField?.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') this.search();
+                if (e.key === 'Enter') {
+                    this.search();
+                }
             });
         }
 
@@ -223,8 +153,8 @@ window.URLS = {
             }
 
             try {
-                // ALERT 정보 조회
-                const alertResponse = await fetch(window.URLS.query_alert, {
+                // 1. ALERT 정보 조회
+                const alertResponse = await fetch("{% url 'query_alert_info' %}", {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded',
@@ -242,8 +172,11 @@ window.URLS = {
 
                 const cols = (alertData.columns || []).map(c => String(c || '').toUpperCase());
                 const rows = alertData.rows || [];
+
+                // 데이터 처리
                 const processedData = this.processAlertData(cols, rows, alertId);
                 
+                // 추가 데이터 조회 및 렌더링
                 await this.fetchAndRenderAllSections(processedData);
                 
             } catch (error) {
@@ -261,6 +194,7 @@ window.URLS = {
             let custIdForPerson = null;
             const canonicalIds = [];
 
+            // 대표 RULE 찾기
             if (idxAlert >= 0 && idxRule >= 0) {
                 const repRow = rows.find(r => String(r[idxAlert]) === alertId);
                 repRuleId = repRow ? String(repRow[idxRule]) : null;
@@ -269,10 +203,12 @@ window.URLS = {
                 }
             }
 
+            // 고객 ID 확보
             if (!custIdForPerson && rows.length && idxCust >= 0) {
                 custIdForPerson = rows[0][idxCust];
             }
 
+            // DISTINCT RULE_ID 추출 (순서 유지)
             if (idxRule >= 0) {
                 const seen = new Set();
                 for (const row of rows) {
@@ -287,16 +223,23 @@ window.URLS = {
                 }
             }
 
-            return { cols, rows, alertId, repRuleId, custIdForPerson, canonicalIds };
+            return {
+                cols,
+                rows,
+                alertId,
+                repRuleId,
+                custIdForPerson,
+                canonicalIds
+            };
         }
 
         async fetchAndRenderAllSections(data) {
             const { cols, rows, alertId, repRuleId, custIdForPerson, canonicalIds } = data;
 
-            // 고객 정보 조회
+            // 1. 고객 정보 조회
             if (custIdForPerson) {
                 try {
-                    const response = await fetch(window.URLS.query_person, {
+                    const response = await fetch("{% url 'query_person_info' %}", {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/x-www-form-urlencoded',
@@ -317,11 +260,11 @@ window.URLS = {
                 window.renderPersonInfoSection([], []);
             }
 
-            // RULE 히스토리 조회
+            // 2. RULE 히스토리 조회
             if (canonicalIds.length > 0) {
                 const ruleKey = canonicalIds.slice().sort().join(',');
                 try {
-                    const response = await fetch(window.URLS.rule_history, {
+                    const response = await fetch("{% url 'rule_history_search' %}", {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/x-www-form-urlencoded',
@@ -340,7 +283,7 @@ window.URLS = {
                 }
             }
 
-            // 나머지 섹션 렌더링
+            // 3. 나머지 섹션 렌더링 (테이블 컴포넌트 활용)
             const ruleObjMap = window.RULE_OBJ_MAP || {};
             window.renderObjectivesSection(cols, rows, ruleObjMap, canonicalIds, repRuleId);
             window.renderAlertHistSection(cols, rows, alertId);
@@ -348,16 +291,19 @@ window.URLS = {
         }
     }
 
-    // 초기화
+    // ==================== 초기화 ====================
     document.addEventListener('DOMContentLoaded', function() {
+        // 매니저 인스턴스 생성
         window.dbManager = new DBConnectionManager();
         window.alertManager = new AlertSearchManager();
 
         // 초기 상태: 섹션 숨김
-        document.querySelectorAll('.section').forEach(section => {
+        const sections = document.querySelectorAll('.section');
+        sections.forEach(section => {
             section.style.display = 'none';
         });
+
+        console.log('Menu1_1 page initialized');
     });
+
 })();
-</script>
-{% endblock %}
