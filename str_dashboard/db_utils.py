@@ -189,11 +189,30 @@ class SQLQueryManager:
         
         # 바인드 변수 처리
         if bind_params:
-            for bind_var, placeholder in bind_params.items():
-                # 콜론(:)을 포함한 바인드 변수를 정확히 매칭
-                # 뒤에 오는 것이 단어 문자가 아닌 경우만 매칭 (공백, 괄호, 연산자 등)
+            # 바인드 변수를 등장 순서대로 처리하기 위해 정렬
+            # SQL에서 나타나는 순서대로 치환해야 함
+            import re
+            
+            # 모든 바인드 변수의 위치 찾기
+            bind_positions = []
+            for bind_var in bind_params.keys():
+                # 이스케이프 처리
+                escaped_var = re.escape(bind_var)
+                # 바인드 변수 뒤에 단어 문자가 아닌 것이 오는 패턴
+                pattern = escaped_var + r'(?![a-zA-Z0-9_])'
+                
+                for match in re.finditer(pattern, sql):
+                    bind_positions.append((match.start(), bind_var))
+            
+            # 위치 순으로 정렬
+            bind_positions.sort(key=lambda x: x[0])
+            
+            # 뒤에서부터 치환 (인덱스가 변하지 않도록)
+            for _, bind_var in reversed(bind_positions):
+                placeholder = bind_params[bind_var]
+                # 정확한 패턴 매칭으로 치환
                 pattern = re.escape(bind_var) + r'(?![a-zA-Z0-9_])'
-                sql = re.sub(pattern, placeholder, sql)
+                sql = re.sub(pattern, placeholder, sql, count=1)
         
         # 마지막 세미콜론 제거
         if sql.rstrip().endswith(";"):
@@ -202,7 +221,14 @@ class SQLQueryManager:
         # 파라미터 개수 계산
         param_count = sql.count("?")
         
+        # 디버깅 로그 추가
+        if bind_params:
+            logger.debug(f"Bind params: {bind_params}")
+            logger.debug(f"Prepared SQL param count: {param_count}")
+        
         return sql, param_count
+
+
     
     @classmethod
     def load_and_prepare(cls, filename: str, bind_params: Optional[Dict[str, str]] = None) -> Tuple[str, int]:

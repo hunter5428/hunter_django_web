@@ -138,34 +138,18 @@ def query_alert_info(request, oracle_conn=None):
     if not alert_id:
         return HttpResponseBadRequest('Missing alert_id.')
     
-    # 쿼리 실행
-    result = execute_query_with_error_handling(
-        oracle_conn=oracle_conn,
-        sql_filename='alert_info_by_alert_id.sql',
-        bind_params={':alert_id': '?'},
-        query_params=[alert_id] * 1  # SQL에서 :alert_id가 사용되는 횟수만큼
-    )
-    
-    # 실제 SQL을 보면 :alert_id가 한 번만 사용되므로
-    # 파라미터 개수를 정확히 계산하기 위해 수정
-    if not result['success']:
-        return JsonResponse(result)
-    
-    # prepared_sql의 실제 ? 개수에 맞춰 파라미터 조정
     try:
-        from .db_utils import SQLQueryManager
-        _, param_count = SQLQueryManager.load_and_prepare(
-            'alert_info_by_alert_id.sql',
-            {':alert_id': '?'}
+        # alert_info_by_alert_id.sql을 보면 :alert_id가 한 번만 사용됨
+        # WITH 절의 WHERE STR_ALERT_ID = :alert_id 부분
+        result = execute_query_with_error_handling(
+            oracle_conn=oracle_conn,
+            sql_filename='alert_info_by_alert_id.sql',
+            bind_params={':alert_id': '?'},
+            query_params=[alert_id]  # 한 번만 사용
         )
         
-        if param_count > 0:
-            result = execute_query_with_error_handling(
-                oracle_conn=oracle_conn,
-                sql_filename='alert_info_by_alert_id.sql',
-                bind_params={':alert_id': '?'},
-                query_params=[alert_id] * param_count
-            )
+        return JsonResponse(result)
+        
     except Exception as e:
         logger.exception(f"Error in query_alert_info: {e}")
         return JsonResponse({
@@ -173,8 +157,6 @@ def query_alert_info(request, oracle_conn=None):
             'message': f'쿼리 실행 중 오류: {e}'
         })
     
-    return JsonResponse(result)
-
 
 @login_required
 @require_POST
@@ -444,6 +426,7 @@ def query_duplicate_by_workplace(request, oracle_conn=None):
     return JsonResponse(result)
 
 
+
 @login_required
 @require_POST
 @require_db_connection
@@ -461,6 +444,7 @@ def query_duplicate_by_workplace_address(request, oracle_conn=None):
             'rows': []
         })
     
+    # SQL 파일의 바인드 변수 순서와 일치하도록 수정
     result = execute_query_with_error_handling(
         oracle_conn=oracle_conn,
         sql_filename='duplicate_by_workplace_address.sql',
