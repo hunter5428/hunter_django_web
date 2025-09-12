@@ -326,6 +326,8 @@
             }
         }
 
+        // menu1_1.js의 fetchDuplicatePersons 메서드 수정 부분
+
         async fetchDuplicatePersons(custId, columns, row) {
             // 컬럼 인덱스 찾기
             const emailIdx = columns.indexOf('E-mail');
@@ -337,7 +339,7 @@
             const workplaceDetailAddressIdx = columns.indexOf('직장상세주소');
             
             // 값 추출
-            let emailPrefix = '';
+            let fullEmail = '';  // 변경: emailPrefix → fullEmail
             let phoneSuffix = '';
             let address = '';
             let detailAddress = '';
@@ -345,12 +347,9 @@
             let workplaceAddress = '';
             let workplaceDetailAddress = '';
             
+            // 이메일 전체 값 사용 (변경됨)
             if (emailIdx >= 0 && row[emailIdx]) {
-                const email = String(row[emailIdx]);
-                const atIndex = email.indexOf('@');
-                if (atIndex > 0) {
-                    emailPrefix = email.substring(0, atIndex);
-                }
+                fullEmail = row[emailIdx];  // 복호화된 전체 이메일 값 그대로 사용
             }
             
             if (phoneIdx >= 0 && row[phoneIdx]) {
@@ -381,7 +380,7 @@
             }
             
             // 조회할 조건이 하나도 없으면 빈 결과 반환
-            if (!emailPrefix && !address && !workplaceName && !workplaceAddress) {
+            if (!fullEmail && !address && !workplaceName && !workplaceAddress) {
                 window.renderDuplicatePersonsSection([], [], {});
                 return;
             }
@@ -390,6 +389,11 @@
                 // 통합 API 호출 (단일 쿼리)
                 const startTime = performance.now();
                 console.log('Starting unified duplicate search...');
+                console.log('Search criteria:', {
+                    email: fullEmail ? 'yes' : 'no',
+                    address: address ? 'yes' : 'no',
+                    workplace: workplaceName || workplaceAddress ? 'yes' : 'no'
+                });
                 
                 const response = await fetch(window.URLS.query_duplicate_unified, {
                     method: 'POST',
@@ -399,7 +403,7 @@
                     },
                     body: new URLSearchParams({
                         current_cust_id: String(custId),
-                        email_prefix: emailPrefix,
+                        full_email: fullEmail,  // 변경: email_prefix → full_email
                         phone_suffix: phoneSuffix,
                         address: address,
                         detail_address: detailAddress,
@@ -418,9 +422,18 @@
                     const columns = result.columns || [];
                     const rows = result.rows || [];
                     
-                    // 매칭 정보
+                    // 매칭 정보 (표시용으로 이메일 앞부분만 추출)
+                    let emailPrefix = '';
+                    if (fullEmail) {
+                        const atIndex = fullEmail.indexOf('@');
+                        if (atIndex > 0) {
+                            emailPrefix = fullEmail.substring(0, atIndex);
+                        }
+                    }
+                    
                     const matchCriteria = {
-                        email_prefix: emailPrefix || null,
+                        email_prefix: emailPrefix || null,  // UI 표시용
+                        full_email: fullEmail || null,      // 실제 비교용
                         phone_suffix: phoneSuffix || null,
                         address: address || null,
                         detail_address: detailAddress || null,

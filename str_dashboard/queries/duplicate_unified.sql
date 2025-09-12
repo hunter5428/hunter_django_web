@@ -5,9 +5,25 @@ WITH DUPLICATE_CANDIDATES AS (
     SELECT CUST_ID, 'EMAIL' AS MATCH_TYPE
     FROM BTCAMLDB_OWN.KYC_CUST_BASE
     WHERE CUST_ID != :current_cust_id
-      AND :email_prefix IS NOT NULL
-      AND SUBSTR(AES_DECRYPT(CUST_EMAIL), 1, INSTR(AES_DECRYPT(CUST_EMAIL), '@') - 1) = :email_prefix
-    
+
+
+
+-- duplicate_unified.sql
+-- 이메일을 암호화하여 비교
+WITH DUPLICATE_CANDIDATES AS (
+    -- 이메일 매칭 (전체 이메일을 암호화하여 비교)
+    SELECT CUST_ID, 'EMAIL' AS MATCH_TYPE
+    FROM BTCAMLDB_OWN.KYC_CUST_BASE
+    WHERE CUST_ID != :current_cust_id
+      AND :full_email IS NOT NULL
+      AND CUST_EMAIL = AES_ENCRYPT(:full_email)  -- 평문을 암호화하여 비교
+
+      -- * 추후 사용을 위해 남겨둠
+      --AND :email_prefix IS NOT NULL
+      --AND SUBSTR(AES_DECRYPT(CUST_EMAIL), 1, INSTR(AES_DECRYPT(CUST_EMAIL), '@') - 1) = :email_prefix
+
+
+
     UNION ALL
     
     -- 주소 매칭

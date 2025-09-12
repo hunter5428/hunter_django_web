@@ -323,11 +323,11 @@ def clear_db_session(request):
 @require_POST
 @require_db_connection
 def query_duplicate_unified(request, oracle_conn=None):
-    """통합 중복 회원 조회 - 단일 쿼리로 모든 조건 처리"""
+    """통합 중복 회원 조회 - 전체 이메일 비교 버전"""
     
     # 파라미터 추출
     current_cust_id = request.POST.get('current_cust_id', '').strip()
-    email_prefix = request.POST.get('email_prefix', '').strip() or None
+    full_email = request.POST.get('full_email', '').strip() or None  # 변경: email_prefix → full_email
     phone_suffix = request.POST.get('phone_suffix', '').strip() or None
     address = request.POST.get('address', '').strip() or None
     detail_address = request.POST.get('detail_address', '').strip() or None
@@ -342,14 +342,22 @@ def query_duplicate_unified(request, oracle_conn=None):
             'rows': []
         })
     
+    # 이메일이 있으면 암호화 (person_detail_info.sql의 결과는 복호화된 상태)
+    # DB의 CUST_EMAIL은 암호화된 상태이므로 비교를 위해 암호화 필요
+    encrypted_email = None
+    if full_email:
+        # 주의: AES_ENCRYPT 함수를 Python에서 구현하거나
+        # 또는 SQL에서 AES_ENCRYPT(:full_email)로 처리
+        # 여기서는 SQL에서 처리하는 방식으로 가정
+        encrypted_email = full_email
+    
     # 통합 쿼리 실행
-    # SQL에서 각 조건의 IS NOT NULL 체크와 OR 조건 때문에 일부 파라미터가 반복됨
     result = execute_query_with_error_handling(
         oracle_conn=oracle_conn,
         sql_filename='duplicate_unified.sql',
         bind_params={
             ':current_cust_id': '?',
-            ':email_prefix': '?',
+            ':full_email': '?',  # 변경: email_prefix → full_email
             ':address': '?',
             ':detail_address': '?',
             ':workplace_name': '?',
@@ -358,28 +366,32 @@ def query_duplicate_unified(request, oracle_conn=None):
             ':phone_suffix': '?'
         },
         query_params=[
-            # 총 16개 파라미터 (SQL에서 사용되는 순서대로)
-            current_cust_id,  # 1. 이메일 조건의 CUST_ID != :current_cust_id
-            email_prefix,     # 2. :email_prefix IS NOT NULL
-            email_prefix,     # 3. = :email_prefix
+            # 이메일 조건 파라미터
+            current_cust_id,  # 1
+            encrypted_email,  # 2: :full_email IS NOT NULL
+            encrypted_email,  # 3: CUST_EMAIL = :full_email
             
-            current_cust_id,  # 4. 주소 조건의 CUST_ID != :current_cust_id  
-            address,          # 5. :address IS NOT NULL
-            address,          # 6. CUST_ADDR = :address
-            detail_address,   # 7. CUST_DTL_ADDR = :detail_address
+            # 주소 조건 파라미터
+            current_cust_id,  # 4
+            address,          # 5
+            address,          # 6
+            detail_address,   # 7
             
-            current_cust_id,  # 8. 직장명 조건의 CUST_ID != :current_cust_id
-            workplace_name,   # 9. :workplace_name IS NOT NULL
-            workplace_name,   # 10. WPLC_NM = :workplace_name
+            # 직장명 조건 파라미터
+            current_cust_id,  # 8
+            workplace_name,   # 9
+            workplace_name,   # 10
             
-            current_cust_id,  # 11. 직장주소 조건의 CUST_ID != :current_cust_id
-            workplace_address,  # 12. :workplace_address IS NOT NULL
-            workplace_address,  # 13. WPLC_ADDR = :workplace_address
-            workplace_detail_address,  # 14. :workplace_detail_address IS NULL (OR 조건 첫 번째)
-            workplace_detail_address,  # 15. WPLC_DTL_ADDR = :workplace_detail_address (OR 조건 두 번째)
+            # 직장주소 조건 파라미터
+            current_cust_id,  # 11
+            workplace_address,  # 12
+            workplace_address,  # 13
+            workplace_detail_address,  # 14
+            workplace_detail_address,  # 15
             
-            phone_suffix,     # 16. WHERE절의 :phone_suffix IS NULL
-            phone_suffix      # 17. SUBSTR(...) = :phone_suffix
+            # 최종 필터 파라미터
+            phone_suffix,     # 16
+            phone_suffix      # 17
         ]
     )
     
