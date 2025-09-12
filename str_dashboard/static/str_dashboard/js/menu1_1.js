@@ -299,18 +299,25 @@
             }
         }
 
+
         async fetchDuplicatePersons(custId, columns, row) {
             // 컬럼 인덱스 찾기
             const emailIdx = columns.indexOf('E-mail');
             const phoneIdx = columns.indexOf('휴대폰 번호');
             const addressIdx = columns.indexOf('거주주소');
             const detailAddressIdx = columns.indexOf('거주상세주소');
+            const workplaceNameIdx = columns.indexOf('직장명');
+            const workplaceAddressIdx = columns.indexOf('직장주소');
+            const workplaceDetailAddressIdx = columns.indexOf('직장상세주소');
             
             // 값 추출
             let emailPrefix = '';
             let phoneSuffix = '';
             let address = '';
             let detailAddress = '';
+            let workplaceName = '';
+            let workplaceAddress = '';
+            let workplaceDetailAddress = '';
             
             if (emailIdx >= 0 && row[emailIdx]) {
                 const email = String(row[emailIdx]);
@@ -335,13 +342,25 @@
                 detailAddress = row[detailAddressIdx] || '';
             }
             
-            // 병렬로 두 쿼리 실행
+            if (workplaceNameIdx >= 0) {
+                workplaceName = row[workplaceNameIdx] || '';
+            }
+            
+            if (workplaceAddressIdx >= 0) {
+                workplaceAddress = row[workplaceAddressIdx] || '';
+            }
+            
+            if (workplaceDetailAddressIdx >= 0) {
+                workplaceDetailAddress = row[workplaceDetailAddressIdx] || '';
+            }
+            
+            // 병렬로 모든 쿼리 실행
             const promises = [];
             
             // 이메일 기준 조회
             if (emailPrefix) {
                 promises.push(
-                    fetch(window.URLS.query_duplicate_by_email, {  // URL 수정
+                    fetch(window.URLS.query_duplicate_by_email, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/x-www-form-urlencoded',
@@ -359,7 +378,7 @@
             // 주소 기준 조회
             if (address) {
                 promises.push(
-                    fetch(window.URLS.query_duplicate_by_address, {  // URL 수정
+                    fetch(window.URLS.query_duplicate_by_address, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/x-www-form-urlencoded',
@@ -368,6 +387,43 @@
                         body: new URLSearchParams({
                             address: address,
                             detail_address: detailAddress,
+                            phone_suffix: phoneSuffix,
+                            current_cust_id: String(custId)
+                        })
+                    }).then(res => res.json())
+                );
+            }
+            
+            // 직장명 기준 조회
+            if (workplaceName) {
+                promises.push(
+                    fetch(window.URLS.query_duplicate_by_workplace, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'X-CSRFToken': getCookie('csrftoken')
+                        },
+                        body: new URLSearchParams({
+                            workplace_name: workplaceName,
+                            phone_suffix: phoneSuffix,
+                            current_cust_id: String(custId)
+                        })
+                    }).then(res => res.json())
+                );
+            }
+            
+            // 직장주소 기준 조회
+            if (workplaceAddress) {
+                promises.push(
+                    fetch(window.URLS.query_duplicate_by_workplace_address, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'X-CSRFToken': getCookie('csrftoken')
+                        },
+                        body: new URLSearchParams({
+                            workplace_address: workplaceAddress,
+                            workplace_detail_address: workplaceDetailAddress,
                             phone_suffix: phoneSuffix,
                             current_cust_id: String(custId)
                         })
@@ -407,7 +463,10 @@
                     email_prefix: emailPrefix || null,
                     phone_suffix: phoneSuffix || null,
                     address: address || null,
-                    detail_address: detailAddress || null
+                    detail_address: detailAddress || null,
+                    workplace_name: workplaceName || null,
+                    workplace_address: workplaceAddress || null,
+                    workplace_detail_address: workplaceDetailAddress || null
                 };
                 
                 window.renderDuplicatePersonsSection(columns, allRows, matchCriteria);
@@ -417,6 +476,7 @@
                 window.renderDuplicatePersonsSection([], [], {});
             }
         }
+
 
         async fetchAndRenderAllSections(data) {
             const { cols, rows, alertId, repRuleId, custIdForPerson, canonicalIds } = data;

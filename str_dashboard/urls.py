@@ -29,6 +29,8 @@ urlpatterns = [
     # 중복 회원 조회 API (분리된 버전)
     path('api/query_duplicate_by_email/', views.query_duplicate_by_email, name='query_duplicate_by_email'),
     path('api/query_duplicate_by_address/', views.query_duplicate_by_address, name='query_duplicate_by_address'),
+    path('api/query_duplicate_by_workplace/', views.query_duplicate_by_workplace, name='query_duplicate_by_workplace'),
+    path('api/query_duplicate_by_workplace_address/', views.query_duplicate_by_workplace_address, name='query_duplicate_by_workplace_address'),
     
     # 법인 관련인 조회 API
     path('api/query_corp_related_persons/', views.query_corp_related_persons, name='query_corp_related_persons'),

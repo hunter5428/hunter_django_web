@@ -261,66 +261,6 @@
         }
 
         /**
-         * 테이블 바디 생성
-         */
-        createTableBody() {
-            const tbody = document.createElement('tbody');
-            
-            this.rows.forEach((row, rowIndex) => {
-                const tr = document.createElement('tr');
-                
-                // 행 하이라이트 처리
-                if (this.options.highlightRow) {
-                    const shouldHighlight = typeof this.options.highlightRow === 'function' 
-                        ? this.options.highlightRow(row, rowIndex)
-                        : this.options.highlightRow === rowIndex;
-                    
-                    if (shouldHighlight) {
-                        tr.className = this.options.highlightClass || 'highlighted';
-                    }
-                }
-                
-                // hover 효과
-                if (this.options.hoverEffect) {
-                    tr.addEventListener('mouseenter', () => tr.classList.add('hover'));
-                    tr.addEventListener('mouseleave', () => tr.classList.remove('hover'));
-                }
-                
-                // 셀 생성
-                const visibleColumns = this.options.visibleColumns || this.columns;
-                visibleColumns.forEach(col => {
-                    const colIndex = this.columns.indexOf(col);
-                    const td = document.createElement('td');
-                    const value = row[colIndex];
-                    
-                    td.innerHTML = this.formatCellValue(value, col, colIndex, row);
-                    
-                    // 셀 클릭 이벤트 (옵션)
-                    if (this.options.onCellClick) {
-                        td.style.cursor = 'pointer';
-                        td.addEventListener('click', () => {
-                            this.options.onCellClick(value, col, row, rowIndex);
-                        });
-                    }
-                    
-                    tr.appendChild(td);
-                });
-                
-                // 행 클릭 이벤트 (옵션)
-                if (this.options.onRowClick) {
-                    tr.style.cursor = 'pointer';
-                    tr.addEventListener('click', () => {
-                        this.options.onRowClick(row, rowIndex);
-                    });
-                }
-                
-                tbody.appendChild(tr);
-            });
-            
-            return tbody;
-        }
-
-        /**
          * 셀 값 포맷팅
          */
         formatCellValue(value, columnName, columnIndex, row) {
@@ -542,6 +482,9 @@
             const phoneIdx = this.columns.indexOf('휴대폰 번호');
             const addressIdx = this.columns.indexOf('거주주소');
             const detailAddressIdx = this.columns.indexOf('거주상세주소');
+            const workplaceNameIdx = this.columns.indexOf('직장명');
+            const workplaceAddressIdx = this.columns.indexOf('직장주소');
+            const workplaceDetailAddressIdx = this.columns.indexOf('직장상세주소');
             const matchTypeIdx = this.columns.indexOf('MATCH_TYPE');
             
             this.rows.forEach((row, rowIndex) => {
@@ -561,7 +504,9 @@
                     
                     // 매칭된 컬럼 강조
                     if ((matchType === 'EMAIL' && colIndex === emailIdx) ||
-                        (matchType === 'ADDRESS' && (colIndex === addressIdx || colIndex === detailAddressIdx))) {
+                        (matchType === 'ADDRESS' && (colIndex === addressIdx || colIndex === detailAddressIdx)) ||
+                        (matchType === 'WORKPLACE_NAME' && colIndex === workplaceNameIdx) ||
+                        (matchType === 'WORKPLACE_ADDRESS' && (colIndex === workplaceAddressIdx || colIndex === workplaceDetailAddressIdx))) {
                         td.style.backgroundColor = '#383838';
                         td.style.fontWeight = '600';
                     }

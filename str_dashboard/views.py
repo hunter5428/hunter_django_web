@@ -412,3 +412,65 @@ def query_corp_related_persons(request, oracle_conn=None):
     )
     
     return JsonResponse(result)
+
+
+@login_required
+@require_POST
+@require_db_connection
+def query_duplicate_by_workplace(request, oracle_conn=None):
+    """직장명 기준 중복 회원 조회"""
+    workplace_name = request.POST.get('workplace_name', '').strip()
+    phone_suffix = request.POST.get('phone_suffix', '').strip() or None
+    current_cust_id = request.POST.get('current_cust_id', '').strip()
+    
+    if not current_cust_id or not workplace_name:
+        return JsonResponse({
+            'success': True,
+            'columns': [],
+            'rows': []
+        })
+    
+    result = execute_query_with_error_handling(
+        oracle_conn=oracle_conn,
+        sql_filename='duplicate_by_workplace.sql',
+        bind_params={
+            ':workplace_name': '?',
+            ':phone_suffix': '?',
+            ':current_cust_id': '?'
+        },
+        query_params=[workplace_name, phone_suffix, current_cust_id]
+    )
+    
+    return JsonResponse(result)
+
+
+@login_required
+@require_POST
+@require_db_connection
+def query_duplicate_by_workplace_address(request, oracle_conn=None):
+    """직장주소 기준 중복 회원 조회"""
+    workplace_address = request.POST.get('workplace_address', '').strip()
+    workplace_detail_address = request.POST.get('workplace_detail_address', '').strip() or None
+    phone_suffix = request.POST.get('phone_suffix', '').strip() or None
+    current_cust_id = request.POST.get('current_cust_id', '').strip()
+    
+    if not current_cust_id or not workplace_address:
+        return JsonResponse({
+            'success': True,
+            'columns': [],
+            'rows': []
+        })
+    
+    result = execute_query_with_error_handling(
+        oracle_conn=oracle_conn,
+        sql_filename='duplicate_by_workplace_address.sql',
+        bind_params={
+            ':workplace_address': '?',
+            ':workplace_detail_address': '?',
+            ':phone_suffix': '?',
+            ':current_cust_id': '?'
+        },
+        query_params=[workplace_address, workplace_detail_address, phone_suffix, current_cust_id]
+    )
+    
+    return JsonResponse(result)
