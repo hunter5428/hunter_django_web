@@ -465,12 +465,12 @@ def query_duplicate_by_workplace_address(request, oracle_conn=None):
         oracle_conn=oracle_conn,
         sql_filename='duplicate_by_workplace_address.sql',
         bind_params={
+            ':current_cust_id': '?',
             ':workplace_address': '?',
             ':workplace_detail_address': '?',
-            ':phone_suffix': '?',
-            ':current_cust_id': '?'
+            ':phone_suffix': '?'
         },
-        query_params=[workplace_address, workplace_detail_address, phone_suffix, current_cust_id]
+        query_params=[current_cust_id, workplace_address, workplace_detail_address, phone_suffix]
     )
     
     return JsonResponse(result)

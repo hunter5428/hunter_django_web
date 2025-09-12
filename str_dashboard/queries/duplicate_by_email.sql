@@ -1,5 +1,5 @@
 -- 동일한 E-mail 앞부분을 가진 회원 조회 (휴대폰 번호 뒷자리 옵션)
--- 바인드 변수: :email_prefix, :phone_suffix, :current_cust_id
+-- 바인드 변수: :current_cust_id, :email_prefix, :phone_suffix
 SELECT DISTINCT
     KYC_CUST_BASE.CUST_ID "고객ID",
     KYC_CUST_BASE.KYC_EXE_MEM_ID "MID",
@@ -15,6 +15,9 @@ SELECT DISTINCT
     KYC_CUST_BASE.CUST_ZIPCD "거주주소우편번호",
     KYC_CUST_BASE.CUST_ADDR "거주주소",
     KYC_CUST_BASE.CUST_DTL_ADDR "거주상세주소",
+    KYC_CUST_BASE.WPLC_NM "직장명",
+    KYC_CUST_BASE.WPLC_ADDR "직장주소",
+    KYC_CUST_BASE.WPLC_DTL_ADDR "직장상세주소",
     KYC_JOB_BASE.JOB_LV_1_NM "직업/업종",
     KYC_JOB_BASE.JOB_LV_2_NM "직업/업종상세",
     'EMAIL' AS "MATCH_TYPE"
@@ -27,6 +30,6 @@ LEFT JOIN BTCAMLDB_OWN.DM_SYS_NAT_BASE QSysNatBaseDmEntity2
     ON KYC_CUST_BASE.CUST_LIVE_NAT_CD = QSysNatBaseDmEntity2.LEN3_ABBR_NAT_CD
 WHERE KYC_CUST_BASE.CUST_ID != :current_cust_id
   AND SUBSTR(AES_DECRYPT(KYC_CUST_BASE.CUST_EMAIL), 1, INSTR(AES_DECRYPT(KYC_CUST_BASE.CUST_EMAIL), '@') - 1) = :email_prefix
-  AND (:phone_suffix IS NULL OR SUBSTR(AES_DECRYPT(KYC_CUST_BASE.CUST_TEL_NO), -4) = :phone_suffix)
+  AND (SUBSTR(AES_DECRYPT(KYC_CUST_BASE.CUST_TEL_NO), -4) = :phone_suffix OR :phone_suffix IS NULL)
 ORDER BY KYC_CUST_BASE.CUST_ID
 FETCH FIRST 50 ROWS ONLY;

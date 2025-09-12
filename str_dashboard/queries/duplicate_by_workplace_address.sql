@@ -1,5 +1,5 @@
 -- 동일한 직장주소를 가진 회원 조회 (휴대폰 번호 뒷자리 옵션)
--- 바인드 변수: :workplace_address, :workplace_detail_address, :phone_suffix, :current_cust_id
+-- 바인드 변수: :current_cust_id, :workplace_address, :workplace_detail_address, :phone_suffix
 SELECT DISTINCT
     KYC_CUST_BASE.CUST_ID "고객ID",
     KYC_CUST_BASE.KYC_EXE_MEM_ID "MID",
