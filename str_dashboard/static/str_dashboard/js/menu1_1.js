@@ -4,6 +4,7 @@
  * ALERT ID 조회 페이지 메인 JavaScript
  * - 테이블 컴포넌트 활용
  * - 기존 UX 유지
+ * - 부분 실패 시에도 성공한 데이터는 표시
  */
 (function() {
     'use strict';
@@ -140,6 +141,11 @@
 
             console.log('Searching for ALERT ID:', alertId);
 
+            // 초기화: 모든 섹션 숨기기
+            document.querySelectorAll('.section').forEach(section => {
+                section.style.display = 'none';
+            });
+
             try {
                 // ALERT 정보 조회
                 const alertResponse = await fetch(window.URLS.query_alert, {
@@ -156,10 +162,7 @@
                 
                 if (!alertData.success) {
                     alert(alertData.message || '조회 실패');
-                    // 실패 시 모든 섹션 숨기기
-                    document.querySelectorAll('.section').forEach(section => {
-                        section.style.display = 'none';
-                    });
+                    // Alert 조회가 실패해도 다른 데이터는 조회 시도하지 않음
                     return;
                 }
 
@@ -170,15 +173,13 @@
                 const processedData = this.processAlertData(cols, rows, alertId);
                 console.log('Processed data:', processedData);
                 
+                // 모든 섹션 데이터 조회 및 렌더링 (에러가 있어도 계속 진행)
                 await this.fetchAndRenderAllSections(processedData);
                 
             } catch (error) {
-                alert('조회 실패');
                 console.error('Alert search error:', error);
-                // 에러 시 모든 섹션 숨기기
-                document.querySelectorAll('.section').forEach(section => {
-                    section.style.display = 'none';
-                });
+                alert('조회 중 오류가 발생했습니다. 일부 데이터만 표시될 수 있습니다.');
+                // 에러가 있어도 가능한 데이터는 표시
             }
         }
 
@@ -248,13 +249,12 @@
                         }
                     }
                 } else {
+                    console.error('Person info query failed:', personData.message);
                     window.renderPersonInfoSection([], []);
-                    window.renderPersonDetailSection([], []);
                 }
             } catch (error) {
                 console.error('Person info fetch failed:', error);
                 window.renderPersonInfoSection([], []);
-                window.renderPersonDetailSection([], []);
             }
         }
 
@@ -316,14 +316,15 @@
                     window.renderCorpRelatedSection(relatedData.columns || [], relatedData.rows || []);
                 } else {
                     console.error('Corp related persons query failed:', relatedData.message);
+                    // 실패해도 빈 테이블 표시
                     window.renderCorpRelatedSection([], []);
                 }
             } catch (error) {
                 console.error('Corp related persons fetch failed:', error);
+                // 에러가 있어도 빈 테이블 표시
                 window.renderCorpRelatedSection([], []);
             }
         }
-
 
         async fetchDuplicatePersons(custId, columns, row) {
             // 컬럼 인덱스 찾기
@@ -379,129 +380,66 @@
                 workplaceDetailAddress = row[workplaceDetailAddressIdx] || '';
             }
             
-            // 병렬로 모든 쿼리 실행
-            const promises = [];
-            
-            // 이메일 기준 조회
-            if (emailPrefix) {
-                promises.push(
-                    fetch(window.URLS.query_duplicate_by_email, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                            'X-CSRFToken': getCookie('csrftoken')
-                        },
-                        body: new URLSearchParams({
-                            email_prefix: emailPrefix,
-                            phone_suffix: phoneSuffix,
-                            current_cust_id: String(custId)
-                        })
-                    }).then(res => res.json())
-                );
-            }
-            
-            // 주소 기준 조회
-            if (address) {
-                promises.push(
-                    fetch(window.URLS.query_duplicate_by_address, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                            'X-CSRFToken': getCookie('csrftoken')
-                        },
-                        body: new URLSearchParams({
-                            address: address,
-                            detail_address: detailAddress,
-                            phone_suffix: phoneSuffix,
-                            current_cust_id: String(custId)
-                        })
-                    }).then(res => res.json())
-                );
-            }
-            
-            // 직장명 기준 조회
-            if (workplaceName) {
-                promises.push(
-                    fetch(window.URLS.query_duplicate_by_workplace, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                            'X-CSRFToken': getCookie('csrftoken')
-                        },
-                        body: new URLSearchParams({
-                            workplace_name: workplaceName,
-                            phone_suffix: phoneSuffix,
-                            current_cust_id: String(custId)
-                        })
-                    }).then(res => res.json())
-                );
-            }
-            
-            // 직장주소 기준 조회
-            if (workplaceAddress) {
-                promises.push(
-                    fetch(window.URLS.query_duplicate_by_workplace_address, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                            'X-CSRFToken': getCookie('csrftoken')
-                        },
-                        body: new URLSearchParams({
-                            workplace_address: workplaceAddress,
-                            workplace_detail_address: workplaceDetailAddress,
-                            phone_suffix: phoneSuffix,
-                            current_cust_id: String(custId)
-                        })
-                    }).then(res => res.json())
-                );
-            }
-            
-            if (promises.length === 0) {
+            // 조회할 조건이 하나도 없으면 빈 결과 반환
+            if (!emailPrefix && !address && !workplaceName && !workplaceAddress) {
                 window.renderDuplicatePersonsSection([], [], {});
                 return;
             }
             
             try {
-                const results = await Promise.all(promises);
+                // 통합 API 호출 (단일 쿼리)
+                const startTime = performance.now();
+                console.log('Starting unified duplicate search...');
                 
-                // 결과 병합 (중복 제거)
-                const allRows = [];
-                const seenCustIds = new Set();
-                const columns = results[0]?.columns || [];
+                const response = await fetch(window.URLS.query_duplicate_unified, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: new URLSearchParams({
+                        current_cust_id: String(custId),
+                        email_prefix: emailPrefix,
+                        phone_suffix: phoneSuffix,
+                        address: address,
+                        detail_address: detailAddress,
+                        workplace_name: workplaceName,
+                        workplace_address: workplaceAddress,
+                        workplace_detail_address: workplaceDetailAddress
+                    })
+                });
                 
-                for (const result of results) {
-                    if (result.success && result.rows) {
-                        const custIdIdx = result.columns?.indexOf('고객ID') || 0;
-                        
-                        for (const row of result.rows) {
-                            const custId = row[custIdIdx];
-                            if (!seenCustIds.has(custId)) {
-                                seenCustIds.add(custId);
-                                allRows.push(row);
-                            }
-                        }
-                    }
+                const result = await response.json();
+                const endTime = performance.now();
+                console.log(`Duplicate search completed in ${(endTime - startTime).toFixed(2)}ms`);
+                
+                if (result.success) {
+                    // MATCH_TYPES 컬럼 처리
+                    const columns = result.columns || [];
+                    const rows = result.rows || [];
+                    
+                    // 매칭 정보
+                    const matchCriteria = {
+                        email_prefix: emailPrefix || null,
+                        phone_suffix: phoneSuffix || null,
+                        address: address || null,
+                        detail_address: detailAddress || null,
+                        workplace_name: workplaceName || null,
+                        workplace_address: workplaceAddress || null,
+                        workplace_detail_address: workplaceDetailAddress || null
+                    };
+                    
+                    window.renderDuplicatePersonsSection(columns, rows, matchCriteria);
+                } else {
+                    console.error('Duplicate query failed:', result.message);
+                    window.renderDuplicatePersonsSection([], [], {});
                 }
-                
-                // 매칭 정보
-                const matchCriteria = {
-                    email_prefix: emailPrefix || null,
-                    phone_suffix: phoneSuffix || null,
-                    address: address || null,
-                    detail_address: detailAddress || null,
-                    workplace_name: workplaceName || null,
-                    workplace_address: workplaceAddress || null,
-                    workplace_detail_address: workplaceDetailAddress || null
-                };
-                
-                window.renderDuplicatePersonsSection(columns, allRows, matchCriteria);
                 
             } catch (error) {
                 console.error('Duplicate persons fetch failed:', error);
                 window.renderDuplicatePersonsSection([], [], {});
             }
         }
-
 
         async fetchAndRenderAllSections(data) {
             const { cols, rows, alertId, repRuleId, custIdForPerson, canonicalIds } = data;
@@ -535,14 +473,19 @@
                             historyData.searched_rule || ruleKey,
                             historyData.similar_list || null
                         );
+                    } else {
+                        // 실패해도 빈 테이블 표시
+                        window.renderRuleHistorySection([], [], ruleKey, null);
                     }
                 } catch (error) {
                     console.error('Rule history fetch failed:', error);
+                    // 에러가 있어도 빈 테이블 표시
                     window.renderRuleHistorySection([], [], ruleKey, null);
                 }
             }
 
             // 나머지 섹션 렌더링 (테이블 컴포넌트 활용)
+            // 이 섹션들은 Alert 데이터에서 직접 렌더링하므로 항상 표시
             const ruleObjMap = window.RULE_OBJ_MAP || {};
             window.renderObjectivesSection(cols, rows, ruleObjMap, canonicalIds, repRuleId);
             window.renderAlertHistSection(cols, rows, alertId);

@@ -261,6 +261,43 @@
         }
 
         /**
+         * 테이블 바디 생성
+         */
+        createTableBody() {
+            const tbody = document.createElement('tbody');
+            
+            this.rows.forEach((row, rowIndex) => {
+                const tr = document.createElement('tr');
+                
+                // 하이라이트 처리
+                if (this.options.highlightRow && this.options.highlightRow(row, rowIndex)) {
+                    tr.className = this.options.highlightClass || 'highlighted';
+                }
+                
+                // hover 효과
+                if (this.options.hoverEffect) {
+                    tr.addEventListener('mouseenter', () => tr.classList.add('hover'));
+                    tr.addEventListener('mouseleave', () => tr.classList.remove('hover'));
+                }
+                
+                // 컬럼 필터링
+                const visibleColumns = this.options.visibleColumns || this.columns;
+                
+                visibleColumns.forEach(col => {
+                    const colIndex = this.columns.indexOf(col);
+                    const td = document.createElement('td');
+                    const value = colIndex >= 0 ? row[colIndex] : '';
+                    td.innerHTML = this.formatCellValue(value, col, colIndex, row);
+                    tr.appendChild(td);
+                });
+                
+                tbody.appendChild(tr);
+            });
+            
+            return tbody;
+        }
+
+        /**
          * 셀 값 포맷팅
          */
         formatCellValue(value, columnName, columnIndex, row) {
@@ -474,6 +511,7 @@
         /**
          * 테이블 바디 생성 (오버라이드) - 매칭된 컬럼 강조 및 NULL 컬럼 제외
          */
+        // table.component.js의 DuplicatePersonsTable 부분 수정 (선택사항)
         createTableBody() {
             const tbody = document.createElement('tbody');
             
@@ -485,11 +523,11 @@
             const workplaceNameIdx = this.columns.indexOf('직장명');
             const workplaceAddressIdx = this.columns.indexOf('직장주소');
             const workplaceDetailAddressIdx = this.columns.indexOf('직장상세주소');
-            const matchTypeIdx = this.columns.indexOf('MATCH_TYPE');
+            const matchTypesIdx = this.columns.indexOf('MATCH_TYPES');  // 변경: MATCH_TYPE → MATCH_TYPES
             
             this.rows.forEach((row, rowIndex) => {
                 const tr = document.createElement('tr');
-                const matchType = matchTypeIdx >= 0 ? row[matchTypeIdx] : '';
+                const matchTypes = matchTypesIdx >= 0 ? row[matchTypesIdx] : '';
                 
                 // hover 효과
                 if (this.options.hoverEffect) {
@@ -502,11 +540,13 @@
                     const td = document.createElement('td');
                     const value = row[colIndex];
                     
-                    // 매칭된 컬럼 강조
-                    if ((matchType === 'EMAIL' && colIndex === emailIdx) ||
-                        (matchType === 'ADDRESS' && (colIndex === addressIdx || colIndex === detailAddressIdx)) ||
-                        (matchType === 'WORKPLACE_NAME' && colIndex === workplaceNameIdx) ||
-                        (matchType === 'WORKPLACE_ADDRESS' && (colIndex === workplaceAddressIdx || colIndex === workplaceDetailAddressIdx))) {
+                    // 매칭된 컬럼 강조 (복수 매칭 처리)
+                    if (matchTypes && (
+                        (matchTypes.includes('EMAIL') && colIndex === emailIdx) ||
+                        (matchTypes.includes('ADDRESS') && (colIndex === addressIdx || colIndex === detailAddressIdx)) ||
+                        (matchTypes.includes('WORKPLACE_NAME') && colIndex === workplaceNameIdx) ||
+                        (matchTypes.includes('WORKPLACE_ADDRESS') && (colIndex === workplaceAddressIdx || colIndex === workplaceDetailAddressIdx))
+                    )) {
                         td.style.backgroundColor = '#383838';
                         td.style.fontWeight = '600';
                     }
