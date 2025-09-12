@@ -138,6 +138,8 @@ def query_alert_info(request, oracle_conn=None):
     if not alert_id:
         return HttpResponseBadRequest('Missing alert_id.')
     
+    logger.info(f"Querying alert info for alert_id: {alert_id}")
+    
     try:
         # alert_info_by_alert_id.sql을 보면 :alert_id가 한 번만 사용됨
         # WITH 절의 WHERE STR_ALERT_ID = :alert_id 부분
@@ -148,6 +150,8 @@ def query_alert_info(request, oracle_conn=None):
             query_params=[alert_id]  # 한 번만 사용
         )
         
+        logger.info(f"Alert query result - success: {result.get('success')}, rows: {len(result.get('rows', []))}")
+        
         return JsonResponse(result)
         
     except Exception as e:
@@ -156,7 +160,7 @@ def query_alert_info(request, oracle_conn=None):
             'success': False,
             'message': f'쿼리 실행 중 오류: {e}'
         })
-    
+
 
 @login_required
 @require_POST

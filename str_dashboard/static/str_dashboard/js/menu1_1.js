@@ -102,6 +102,10 @@
                 }
             }
         }
+
+        isConnected() {
+            return this.statusBadge && this.statusBadge.classList.contains('ok');
+        }
     }
 
     // ==================== ALERT 조회 관리 ====================
@@ -120,12 +124,21 @@
         }
 
         async search() {
+            // DB 연결 상태 먼저 확인
+            if (!window.dbManager || !window.dbManager.isConnected()) {
+                alert('먼저 DB Connection에서 연결을 완료해 주세요.');
+                $('#btn-open-db-modal')?.click();
+                return;
+            }
+            
             const alertId = this.inputField?.value?.trim();
             
             if (!alertId) {
                 alert('ALERT ID를 입력하세요.');
                 return;
             }
+
+            console.log('Searching for ALERT ID:', alertId);
 
             try {
                 // ALERT 정보 조회
@@ -139,21 +152,33 @@
                 });
 
                 const alertData = await alertResponse.json();
+                console.log('Alert query response:', alertData);
                 
                 if (!alertData.success) {
                     alert(alertData.message || '조회 실패');
+                    // 실패 시 모든 섹션 숨기기
+                    document.querySelectorAll('.section').forEach(section => {
+                        section.style.display = 'none';
+                    });
                     return;
                 }
 
                 const cols = (alertData.columns || []).map(c => String(c || '').toUpperCase());
                 const rows = alertData.rows || [];
+                console.log('Alert data - columns:', cols.length, 'rows:', rows.length);
+                
                 const processedData = this.processAlertData(cols, rows, alertId);
+                console.log('Processed data:', processedData);
                 
                 await this.fetchAndRenderAllSections(processedData);
                 
             } catch (error) {
                 alert('조회 실패');
-                console.error(error);
+                console.error('Alert search error:', error);
+                // 에러 시 모든 섹션 숨기기
+                document.querySelectorAll('.section').forEach(section => {
+                    section.style.display = 'none';
+                });
             }
         }
 
@@ -239,7 +264,7 @@
                 const actualCustType = (custType === '법인') ? '법인' : '개인';
                 console.log(`Fetching detail for custId: ${custId}, type: ${actualCustType}`);
                 
-                const response = await fetch('/api/query_person_detail_info/', {
+                const response = await fetch(window.URLS.query_person_detail, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded',
@@ -275,7 +300,7 @@
 
         async fetchCorpRelatedPersons(custId) {
             try {
-                const response = await fetch('/api/query_corp_related_persons/', {
+                const response = await fetch(window.URLS.query_corp_related_persons, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded',

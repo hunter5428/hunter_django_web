@@ -411,7 +411,7 @@
         constructor(containerId, matchCriteria) {
             super(containerId, {
                 className: 'table duplicate-persons-table',
-                emptyMessage: '동일한 E-mail, 휴대폰 번호, 거주주소를 가진 회원이 조회되지 않습니다.',
+                emptyMessage: '동일한 E-mail, 휴대폰 번호, 거주주소, 직장명, 직장주소를 가진 회원이 조회되지 않습니다.',
                 showHeader: true
             });
             this.matchCriteria = matchCriteria || {};
