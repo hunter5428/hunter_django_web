@@ -37,7 +37,9 @@ SELECT
     COALESCE(AES_DECRYPT(ce.CUST_TEL_NO), AES_DECRYPT(c.CUST_TEL_NO)) AS "연락처",
     COALESCE(AES_DECRYPT(ce.CUST_EMAIL), AES_DECRYPT(c.CUST_EMAIL)) AS "이메일",
     
-    -- ========== 국적 정보 ==========
+    -- ========== 국적 정보 ========1
+    
+    ==
     n1.NAT_KO_NM AS "국적",
     n1.LEN2_ABBR_NAT_CD AS "국적코드",
     
@@ -204,7 +206,7 @@ SELECT
     
 FROM BTCAMLDB_OWN.KYC_CUST_BASE c
 -- 회원 정보
-INNER JOIN BTCAMLDB_OWN.KYC_MEM_BASE m
+LEFT JOIN BTCAMLDB_OWN.KYC_MEM_BASE m
     ON c.CUST_ID = m.CUST_ID
 -- RA 등급 (최신)
 LEFT JOIN BTCAMLDB_OWN.RA_CUST_RKAT_GRD_LIST ra
