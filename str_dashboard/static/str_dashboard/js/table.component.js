@@ -849,20 +849,39 @@
          */
         renderAlertHistory(containerId, columns, rows, alertId) {
             const table = new AlertHistoryTable(containerId, alertId);
-            // 필요한 컬럼만 필터링
-            const visibleCols = ['STDS_DTM', 'CUST_ID', 'STR_RULE_ID', 'STR_ALERT_ID', 'STR_RPT_MNGT_NO', 'STR_RULE_NM'];
+            // 필요한 컬럼만 필터링 (TRAN_STRT, TRAN_END 추가)
+            const visibleCols = ['STDS_DTM', 'CUST_ID', 'STR_RULE_ID', 'STR_ALERT_ID', 'STR_RPT_MNGT_NO', 'STR_RULE_NM', 'TRAN_STRT', 'TRAN_END'];
             const colIndices = visibleCols.map(col => columns.indexOf(col));
             
             if (colIndices.some(idx => idx < 0)) {
-                table.renderEmpty();
-                return;
+                // 일부 컬럼이 없어도 있는 컬럼만 표시
+                const availableCols = [];
+                const availableIndices = [];
+                visibleCols.forEach((col, i) => {
+                    if (colIndices[i] >= 0) {
+                        availableCols.push(col);
+                        availableIndices.push(colIndices[i]);
+                    }
+                });
+                
+                if (availableCols.length === 0) {
+                    table.renderEmpty();
+                    return;
+                }
+                
+                const filteredRows = rows.map(row => 
+                    availableIndices.map(idx => row[idx])
+                );
+                
+                table.setData(availableCols, filteredRows);
+            } else {
+                const filteredRows = rows.map(row => 
+                    colIndices.map(idx => row[idx])
+                );
+                
+                table.setData(visibleCols, filteredRows);
             }
             
-            const filteredRows = rows.map(row => 
-                colIndices.map(idx => row[idx])
-            );
-            
-            table.setData(visibleCols, filteredRows);
             table.render();
         },
         
