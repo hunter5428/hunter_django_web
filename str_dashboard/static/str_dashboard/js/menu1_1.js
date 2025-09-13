@@ -398,25 +398,14 @@
             let emailIdx, phoneIdx, addressIdx, detailAddressIdx;
             let workplaceNameIdx, workplaceAddressIdx, workplaceDetailAddressIdx;
             
-            if (custType === '법인') {
-                // 법인의 경우 매핑
-                emailIdx = columns.indexOf('이메일');
-                phoneIdx = columns.indexOf('연락처');
-                addressIdx = columns.indexOf('거주지주소');
-                detailAddressIdx = columns.indexOf('거주지상세주소');
-                workplaceNameIdx = columns.indexOf('성명');  // 법인명
-                workplaceAddressIdx = columns.indexOf('거주지주소');
-                workplaceDetailAddressIdx = columns.indexOf('거주지상세주소');
-            } else {
-                // 개인의 경우 매핑
-                emailIdx = columns.indexOf('이메일');
-                phoneIdx = columns.indexOf('연락처');
-                addressIdx = columns.indexOf('거주지주소');
-                detailAddressIdx = columns.indexOf('거주지상세주소');
-                workplaceNameIdx = columns.indexOf('직장명');
-                workplaceAddressIdx = columns.indexOf('직장주소');
-                workplaceDetailAddressIdx = columns.indexOf('직장상세주소');
-            }
+            // 통합 고객 정보의 컬럼명 매핑
+            emailIdx = columns.indexOf('이메일');
+            phoneIdx = columns.indexOf('연락처');
+            addressIdx = columns.indexOf('거주지주소');
+            detailAddressIdx = columns.indexOf('거주지상세주소');
+            workplaceNameIdx = columns.indexOf('직장명');
+            workplaceAddressIdx = columns.indexOf('직장주소');
+            workplaceDetailAddressIdx = columns.indexOf('직장상세주소');
             
             // 값 추출
             let fullEmail = '';
@@ -525,9 +514,17 @@
         async fetchAndRenderAllSections(data) {
             const { cols, rows, alertId, repRuleId, custIdForPerson, canonicalIds } = data;
 
+            // Promise.allSettled를 사용하여 병렬 처리 (에러가 있어도 계속 진행)
+            const promises = [];
+
             // 통합 고객 정보 조회
             if (custIdForPerson) {
-                await this.fetchCustomerInfo(custIdForPerson);
+                promises.push(
+                    this.fetchCustomerInfo(custIdForPerson).catch(e => {
+                        console.error('Customer info failed:', e);
+                        window.renderCustomerUnifiedSection([], []);
+                    })
+                );
             } else {
                 window.renderCustomerUnifiedSection([], []);
             }
@@ -535,37 +532,48 @@
             // RULE 히스토리 조회
             if (canonicalIds.length > 0) {
                 const ruleKey = canonicalIds.slice().sort().join(',');
-                try {
-                    const response = await fetch(window.URLS.rule_history, {
+                promises.push(
+                    fetch(window.URLS.rule_history, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/x-www-form-urlencoded',
                             'X-CSRFToken': getCookie('csrftoken')
                         },
                         body: new URLSearchParams({ rule_key: ruleKey })
-                    });
-                    
-                    const historyData = await response.json();
-                    if (historyData.success) {
-                        window.renderRuleHistorySection(
-                            historyData.columns || [], 
-                            historyData.rows || [],
-                            historyData.searched_rule || ruleKey,
-                            historyData.similar_list || null
-                        );
-                    } else {
+                    })
+                    .then(response => response.json())
+                    .then(historyData => {
+                        if (historyData.success) {
+                            window.renderRuleHistorySection(
+                                historyData.columns || [], 
+                                historyData.rows || [],
+                                historyData.searched_rule || ruleKey,
+                                historyData.similar_list || null
+                            );
+                        } else {
+                            window.renderRuleHistorySection([], [], ruleKey, null);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Rule history fetch failed:', error);
                         window.renderRuleHistorySection([], [], ruleKey, null);
-                    }
-                } catch (error) {
-                    console.error('Rule history fetch failed:', error);
-                    window.renderRuleHistorySection([], [], ruleKey, null);
-                }
+                    })
+                );
             }
 
-            // 나머지 섹션 렌더링 (테이블 컴포넌트 활용)
+            // 모든 비동기 작업 대기
+            await Promise.allSettled(promises);
+
+            // 동기 렌더링 섹션들 (Alert 데이터 기반)
             const ruleObjMap = window.RULE_OBJ_MAP || {};
-            window.renderObjectivesSection(cols, rows, ruleObjMap, canonicalIds, repRuleId);
+            
+            // Alert 히스토리 렌더링
             window.renderAlertHistSection(cols, rows, alertId);
+            
+            // 의심거래 객관식 렌더링
+            window.renderObjectivesSection(cols, rows, ruleObjMap, canonicalIds, repRuleId);
+            
+            // Rule 설명 렌더링
             window.renderRuleDescSection(cols, rows, canonicalIds, repRuleId);
         }
     }

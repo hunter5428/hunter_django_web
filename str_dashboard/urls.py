@@ -21,12 +21,9 @@ urlpatterns = [
 
     # API
     path('api/test_oracle_connection/', views.test_oracle_connection, name='test_oracle_connection'),
+    path('api/query_alert_info/', views.query_alert_info, name='query_alert_info'),
     path('api/query_customer_unified/', views.query_customer_unified_info, name='query_customer_unified'),
-
-    #path('api/query_alert_info/', views.query_alert_info, name='query_alert_info'),
-    #path('api/query_person_info/', views.query_person_info, name='query_person_info'),
     path('api/rule_history_search/', views.rule_history_search, name='rule_history_search'),
-    path('api/query_person_detail_info/', views.query_person_detail_info, name='query_person_detail_info'),
     
     # 중복 회원 조회 API
     path('api/query_duplicate_unified/', views.query_duplicate_unified, name='query_duplicate_unified'),
@@ -34,6 +31,6 @@ urlpatterns = [
     # 법인 관련인 조회 API
     path('api/query_corp_related_persons/', views.query_corp_related_persons, name='query_corp_related_persons'),
     
-    # 개인 관련인(내부입출금) 조회 API - 새로 추가
+    # 개인 관련인(내부입출금) 조회 API
     path('api/query_person_related_summary/', views.query_person_related_summary, name='query_person_related_summary'),
 ]

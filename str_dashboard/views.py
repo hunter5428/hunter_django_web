@@ -17,7 +17,8 @@ from .db_utils import (
 from .queries.rule_objectives import build_rule_to_objectives
 from .queries.rule_historic_search import (
     fetch_df_result_0, 
-    aggregate_by_rule_id_list
+    aggregate_by_rule_id_list,
+    find_most_similar_rule_combinations
 )
 
 logger = logging.getLogger(__name__)
@@ -105,6 +106,9 @@ def test_oracle_connection(request):
                 'password': params['password'],
             }
             
+            # 세션 타임아웃 설정 (1시간)
+            request.session.set_expiry(3600)
+            
             logger.info(f"Oracle connection successful for user: {params['username']}")
             return JsonResponse({
                 'success': True,
@@ -142,12 +146,11 @@ def query_alert_info(request, oracle_conn=None):
     
     try:
         # alert_info_by_alert_id.sql을 보면 :alert_id가 한 번만 사용됨
-        # WITH 절의 WHERE STR_ALERT_ID = :alert_id 부분
         result = execute_query_with_error_handling(
             oracle_conn=oracle_conn,
             sql_filename='alert_info_by_alert_id.sql',
             bind_params={':alert_id': '?'},
-            query_params=[alert_id]  # 한 번만 사용
+            query_params=[alert_id]
         )
         
         logger.info(f"Alert query result - success: {result.get('success')}, rows: {len(result.get('rows', []))}")
@@ -161,10 +164,6 @@ def query_alert_info(request, oracle_conn=None):
             'message': f'쿼리 실행 중 오류: {e}'
         })
 
-
-
-
-# views.py에 추가할 함수
 
 @login_required
 @require_POST
@@ -205,8 +204,6 @@ def query_customer_unified_info(request, oracle_conn=None):
         logger.error(f"Unified query failed: {result.get('message')}")
     
     return JsonResponse(result)
-
-
 
 
 @login_required
@@ -250,7 +247,6 @@ def rule_history_search(request, oracle_conn=None):
         # 결과가 없는 경우 유사 조합 검색
         similar_list = []
         if len(rows) == 0 and not df1.empty:
-            from .queries.rule_historic_search import find_most_similar_rule_combinations
             similar_list = find_most_similar_rule_combinations(rule_key, df1)
         
         logger.info(f"Rule history search completed. Found {len(rows)} matching rows for key: {rule_key}")
@@ -263,7 +259,7 @@ def rule_history_search(request, oracle_conn=None):
             'columns': columns,
             'rows': rows,
             'searched_rule': rule_key,
-            'similar_list': similar_list  # 리스트로 변경
+            'similar_list': similar_list
         })
         
     except Exception as e:
@@ -272,42 +268,6 @@ def rule_history_search(request, oracle_conn=None):
             'success': False,
             'message': f'히스토리 조회 실패: {e}'
         })
-    
-    
-def get_db_status(request) -> dict:
-    """현재 데이터베이스 연결 상태 조회"""
-    db_info = request.session.get('db_conn')
-    status = request.session.get('db_conn_status', 'need')
-    
-    if status == 'ok' and db_info:
-        return {
-            'connected': True,
-            'status': status,
-            'username': db_info.get('username', 'Unknown'),
-            'jdbc_url': db_info.get('jdbc_url', '')
-        }
-    
-    return {
-        'connected': False,
-        'status': status,
-        'username': None,
-        'jdbc_url': None
-    }
-
-
-@login_required
-def check_db_status(request):
-    """데이터베이스 연결 상태 확인 API (AJAX용)"""
-    return JsonResponse(get_db_status(request))
-
-
-def clear_db_session(request):
-    """데이터베이스 세션 정보 초기화"""
-    keys_to_clear = ['db_conn', 'db_conn_status']
-    for key in keys_to_clear:
-        if key in request.session:
-            del request.session[key]
-    logger.info("Database session cleared")
 
 
 @login_required
@@ -340,42 +300,20 @@ def query_duplicate_unified(request, oracle_conn=None):
     logger.debug(f"  address: {bool(address)}, workplace: {bool(workplace_name)}")
     logger.info("Note: Email-based duplicate search is currently disabled")
     
-    # SQL 쿼리의 바인드 변수 사용 순서 (duplicate_unified.sql 기준)
-    # 이메일 부분이 주석 처리되어 바인드 변수 개수 감소
-    # WITH 절 내부:
-    # 1. :current_cust_id (주소 섹션)
-    # 2. :address (IS NOT NULL)
-    # 3. :address (= 비교)
-    # 4. :detail_address
-    # 5. :current_cust_id (직장명 섹션)
-    # 6. :workplace_name (IS NOT NULL)
-    # 7. :workplace_name (= 비교)
-    # 8. :current_cust_id (직장주소 섹션)
-    # 9. :workplace_address (IS NOT NULL)
-    # 10. :workplace_address (= 비교)
-    # 11. :workplace_detail_address (IS NULL)
-    # 12. :workplace_detail_address (= 비교)
-    # WHERE 절:
-    # 13. :phone_suffix (IS NULL)
-    # 14. :phone_suffix (= 비교)
-    
     # 통합 쿼리 실행 (이메일 파라미터 제외)
     result = execute_query_with_error_handling(
         oracle_conn=oracle_conn,
         sql_filename='duplicate_unified.sql',
         bind_params={
-            ':current_cust_id': '?',           # 3번 사용 (이메일 제외로 4→3)
-            # ':encrypted_email': '?',         # 제거됨
-            ':address': '?',                    # 2번 사용
-            ':detail_address': '?',             # 1번 사용
-            ':workplace_name': '?',             # 2번 사용
-            ':workplace_address': '?',          # 2번 사용
-            ':workplace_detail_address': '?',   # 2번 사용
-            ':phone_suffix': '?'                # 2번 사용
+            ':current_cust_id': '?',
+            ':address': '?',
+            ':detail_address': '?',
+            ':workplace_name': '?',
+            ':workplace_address': '?',
+            ':workplace_detail_address': '?',
+            ':phone_suffix': '?'
         },
         query_params=[
-            # 이메일 조건 제거됨 (3개 삭제)
-            
             # 주소 조건 (4개)
             current_cust_id,
             address,
@@ -397,7 +335,7 @@ def query_duplicate_unified(request, oracle_conn=None):
             # 전화번호 필터 (2개)
             phone_suffix,
             phone_suffix
-        ]  # 총 14개 (기존 17개에서 3개 감소)
+        ]  # 총 14개
     )
     
     if result.get('success'):
@@ -410,7 +348,6 @@ def query_duplicate_unified(request, oracle_conn=None):
     return JsonResponse(result)
 
 
-
 @login_required
 @require_POST
 @require_db_connection
@@ -421,6 +358,8 @@ def query_corp_related_persons(request, oracle_conn=None):
     if not cust_id:
         return HttpResponseBadRequest('Missing cust_id.')
     
+    logger.info(f"Querying corp related persons for cust_id: {cust_id}")
+    
     # 쿼리 실행
     result = execute_query_with_error_handling(
         oracle_conn=oracle_conn,
@@ -429,9 +368,12 @@ def query_corp_related_persons(request, oracle_conn=None):
         query_params=[cust_id]
     )
     
+    if result.get('success'):
+        logger.info(f"Corp related persons query successful - found {len(result.get('rows', []))} persons")
+    else:
+        logger.error(f"Corp related persons query failed: {result.get('message')}")
+    
     return JsonResponse(result)
-
-
 
 
 @login_required
@@ -454,14 +396,6 @@ def query_person_related_summary(request, oracle_conn=None):
     
     try:
         # person_related_summary.sql 실행
-        # 바인드 변수 순서 확인:
-        # 1. :start_date (RELATED_PERSONS CTE)
-        # 2. :end_date (RELATED_PERSONS CTE)
-        # 3. :cust_id (RELATED_PERSONS CTE)
-        # 4. :cust_id (TRANSACTION_SUMMARY CTE)
-        # 5. :start_date (TRANSACTION_SUMMARY CTE)
-        # 6. :end_date (TRANSACTION_SUMMARY CTE)
-        
         result = execute_query_with_error_handling(
             oracle_conn=oracle_conn,
             sql_filename='person_related_summary.sql',
@@ -631,3 +565,39 @@ def format_related_person_summary(related_persons):
     lines.append("=" * 80)
     
     return "\n".join(lines)
+
+
+def get_db_status(request) -> dict:
+    """현재 데이터베이스 연결 상태 조회"""
+    db_info = request.session.get('db_conn')
+    status = request.session.get('db_conn_status', 'need')
+    
+    if status == 'ok' and db_info:
+        return {
+            'connected': True,
+            'status': status,
+            'username': db_info.get('username', 'Unknown'),
+            'jdbc_url': db_info.get('jdbc_url', '')
+        }
+    
+    return {
+        'connected': False,
+        'status': status,
+        'username': None,
+        'jdbc_url': None
+    }
+
+
+@login_required
+def check_db_status(request):
+    """데이터베이스 연결 상태 확인 API (AJAX용)"""
+    return JsonResponse(get_db_status(request))
+
+
+def clear_db_session(request):
+    """데이터베이스 세션 정보 초기화"""
+    keys_to_clear = ['db_conn', 'db_conn_status']
+    for key in keys_to_clear:
+        if key in request.session:
+            del request.session[key]
+    logger.info("Database session cleared")

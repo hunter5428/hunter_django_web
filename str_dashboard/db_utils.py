@@ -172,7 +172,7 @@ class SQLQueryManager:
         sql = re.sub(r"--.*?$", "", sql, flags=re.M)
         return sql.strip()
     
-    # str_dashboard/db_utils.py의 SQLQueryManager.prepare_sql 메서드 수정
+    # str_dashboard/db_utils.py - prepare_sql 메서드만 수정
 
     @staticmethod
     def prepare_sql(sql: str, bind_params: Optional[Dict[str, str]] = None) -> Tuple[str, int]:
@@ -190,54 +190,26 @@ class SQLQueryManager:
         sql = SQLQueryManager.strip_comments(sql)
         
         # 바인드 변수 처리
+        param_count = 0
         if bind_params:
-            import re
-            
-            # 바인드 변수별 사용 횟수 카운트 (디버깅용)
-            bind_counts = {}
-            
-            # 모든 바인드 변수의 위치 찾기
-            bind_positions = []
-            for bind_var in bind_params.keys():
-                # 이스케이프 처리
-                escaped_var = re.escape(bind_var)
-                # 바인드 변수 뒤에 단어 문자가 아닌 것이 오는 패턴
-                pattern = escaped_var + r'(?![a-zA-Z0-9_])'
-                
-                count = 0
-                for match in re.finditer(pattern, sql):
-                    bind_positions.append((match.start(), bind_var))
-                    count += 1
-                
-                bind_counts[bind_var] = count
-                logger.debug(f"Bind variable {bind_var}: found {count} times")
-            
-            # 위치 순으로 정렬
-            bind_positions.sort(key=lambda x: x[0])
-            
-            # 뒤에서부터 치환 (인덱스가 변하지 않도록)
-            for _, bind_var in reversed(bind_positions):
-                placeholder = bind_params[bind_var]
-                # 정확한 패턴 매칭으로 치환
-                pattern = re.escape(bind_var) + r'(?![a-zA-Z0-9_])'
-                sql = re.sub(pattern, placeholder, sql, count=1)
-            
-            # 전체 바인드 변수 개수 (각 변수의 사용 횟수 합)
-            total_bind_count = sum(bind_counts.values())
-            logger.debug(f"Total bind variables: {total_bind_count}")
+            # 각 바인드 변수의 사용 횟수를 계산
+            for bind_var, placeholder in bind_params.items():
+                # 바인드 변수가 SQL에서 몇 번 사용되는지 계산
+                count = sql.count(bind_var)
+                # 치환
+                sql = sql.replace(bind_var, placeholder)
+                # 총 파라미터 개수 누적
+                param_count += count
+                logger.debug(f"Bind variable {bind_var}: replaced {count} times")
+        else:
+            # bind_params가 없으면 기존 ? 개수 카운트
+            param_count = sql.count("?")
         
         # 마지막 세미콜론 제거
         if sql.rstrip().endswith(";"):
             sql = sql.rstrip()[:-1]
         
-        # 파라미터 개수 계산
-        param_count = sql.count("?")
-        
-        # 디버깅 로그 추가
-        if bind_params:
-            logger.debug(f"Prepared SQL param count: {param_count}")
-            if param_count != sum(bind_counts.values()):
-                logger.warning(f"Parameter count mismatch: expected {sum(bind_counts.values())}, got {param_count}")
+        logger.debug(f"Prepared SQL - total parameter count: {param_count}")
         
         return sql, param_count
 

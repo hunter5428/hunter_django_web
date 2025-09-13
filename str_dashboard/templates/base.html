@@ -13,7 +13,9 @@
   <!-- 페이지별 추가 CSS -->
   {% block extra_css %}{% endblock %}
 </head>
-<body class="{% if request.COOKIES.sidebar == 'collapsed' %}sidebar-collapsed{% endif %} {% block body_class %}{% endblock %}">
+<body class="{% if request.COOKIES.sidebar == 'collapsed' %}sidebar-collapsed{% endif %} {% block body_class %}{% endblock %}"
+      data-top-menu="{{ active_top_menu|default:'' }}"
+      data-sub-menu="{{ active_sub_menu|default:'' }}">
   
   <!-- 헤더 -->
   {% include "base_component/header.html" %}
@@ -36,6 +38,8 @@
       staticUrl: "{{ STATIC_URL }}",
       csrfToken: "{{ csrf_token }}",
       currentUser: "{{ request.user.username|default:'' }}",
+      currentTopMenu: "{{ active_top_menu|default:'' }}",
+      currentSubMenu: "{{ active_sub_menu|default:'' }}",
       urls: {
         home: "{% url 'home' %}",
         login: "{% url 'login' %}",
