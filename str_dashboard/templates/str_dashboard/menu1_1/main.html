@@ -42,6 +42,12 @@
     <div class="table-wrap" id="result_table_corp_related"></div>
 </div>
 
+<!-- 섹션: 개인 관련인 정보 (내부입출금 거래) -->
+<div id="section_person_related" class="section" style="display:none;">
+    <h3>개인 관련인 정보 (내부입출금 거래)</h3>
+    <div class="table-wrap" id="result_table_person_related"></div>
+</div>
+
 <!-- 섹션: 동일_차명의심_상세 정보 -->
 <div id="section_duplicate_persons" class="section" style="display:none;">
     <h3>동일_차명의심_상세 정보</h3>
@@ -111,7 +117,8 @@ window.URLS = {
     query_person_detail: "{% url 'query_person_detail_info' %}",
     rule_history: "{% url 'rule_history_search' %}",
     query_duplicate_unified: "{% url 'query_duplicate_unified' %}",
-    query_corp_related_persons: "{% url 'query_corp_related_persons' %}"
+    query_corp_related_persons: "{% url 'query_corp_related_persons' %}",
+    query_person_related_summary: "{% url 'query_person_related_summary' %}"  // 새로 추가
 };
 </script>
 

@@ -452,3 +452,203 @@ def query_corp_related_persons(request, oracle_conn=None):
 
 
 
+
+# views.py에 추가할 함수
+
+@login_required
+@require_POST
+@require_db_connection
+def query_person_related_summary(request, oracle_conn=None):
+    """개인 고객의 관련인(내부입출금 거래 상대방) 정보 조회"""
+    
+    cust_id = request.POST.get('cust_id', '').strip()
+    start_date = request.POST.get('start_date', '').strip()
+    end_date = request.POST.get('end_date', '').strip()
+    
+    if not all([cust_id, start_date, end_date]):
+        return JsonResponse({
+            'success': False,
+            'message': 'Missing required parameters: cust_id, start_date, end_date'
+        })
+    
+    logger.info(f"Querying person related summary - cust_id: {cust_id}, period: {start_date} ~ {end_date}")
+    
+    try:
+        # person_related_summary.sql 실행
+        # 바인드 변수 순서 확인:
+        # 1. :start_date (RELATED_PERSONS CTE)
+        # 2. :end_date (RELATED_PERSONS CTE)
+        # 3. :cust_id (RELATED_PERSONS CTE)
+        # 4. :cust_id (TRANSACTION_SUMMARY CTE)
+        # 5. :start_date (TRANSACTION_SUMMARY CTE)
+        # 6. :end_date (TRANSACTION_SUMMARY CTE)
+        
+        result = execute_query_with_error_handling(
+            oracle_conn=oracle_conn,
+            sql_filename='person_related_summary.sql',
+            bind_params={
+                ':cust_id': '?',
+                ':start_date': '?',
+                ':end_date': '?'
+            },
+            query_params=[
+                start_date,     # 첫 번째 :start_date
+                end_date,       # 첫 번째 :end_date
+                cust_id,        # 첫 번째 :cust_id
+                cust_id,        # 두 번째 :cust_id
+                start_date,     # 두 번째 :start_date
+                end_date        # 두 번째 :end_date
+            ]
+        )
+        
+        if not result.get('success'):
+            logger.error(f"Person related summary query failed: {result.get('message')}")
+            return JsonResponse(result)
+        
+        # 결과 데이터 처리 및 포맷팅
+        columns = result.get('columns', [])
+        rows = result.get('rows', [])
+        
+        # 관련인별로 데이터 그룹화
+        related_persons = {}
+        
+        for row in rows:
+            record_type = row[0] if len(row) > 0 else None
+            cust_id_val = row[1] if len(row) > 1 else None
+            
+            if not cust_id_val:
+                continue
+            
+            if cust_id_val not in related_persons:
+                related_persons[cust_id_val] = {
+                    'info': None,
+                    'transactions': []
+                }
+            
+            if record_type == 'PERSON_INFO':
+                # 개인 정보 레코드
+                related_persons[cust_id_val]['info'] = {
+                    'cust_id': cust_id_val,
+                    'name': row[2],
+                    'id_number': row[3],
+                    'birth_date': row[4],
+                    'age': row[5],
+                    'gender': row[6],
+                    'address': row[7],
+                    'job': row[8],
+                    'workplace': row[9],
+                    'workplace_addr': row[10],
+                    'income_source': row[11],
+                    'tran_purpose': row[12],
+                    'risk_grade': row[13],
+                    'total_tran_count': row[14]
+                }
+            elif record_type == 'TRAN_SUMMARY':
+                # 거래 요약 레코드
+                related_persons[cust_id_val]['transactions'].append({
+                    'coin_symbol': row[15],
+                    'tran_type': row[16],
+                    'tran_qty': row[17],
+                    'tran_amt': row[18],
+                    'tran_cnt': row[19]
+                })
+        
+        # 텍스트 형식으로 변환
+        summary_text = format_related_person_summary(related_persons)
+        
+        logger.info(f"Person related summary completed - found {len(related_persons)} related persons")
+        
+        return JsonResponse({
+            'success': True,
+            'related_persons': related_persons,
+            'summary_text': summary_text,
+            'raw_columns': columns,
+            'raw_rows': rows
+        })
+        
+    except Exception as e:
+        logger.exception(f"Error in query_person_related_summary: {e}")
+        return JsonResponse({
+            'success': False,
+            'message': f'관련인 조회 중 오류: {e}'
+        })
+
+
+def format_related_person_summary(related_persons):
+    """관련인 정보를 읽기 쉬운 텍스트 형식으로 변환"""
+    
+    if not related_persons:
+        return "내부입출금 거래 관련인이 없습니다."
+    
+    lines = []
+    lines.append("=" * 80)
+    lines.append("【 개인 고객 관련인 정보 (내부입출금 거래 상대방) 】")
+    lines.append("=" * 80)
+    lines.append("")
+    
+    for idx, (cust_id, data) in enumerate(related_persons.items(), 1):
+        info = data.get('info')
+        transactions = data.get('transactions', [])
+        
+        if not info:
+            continue
+        
+        # 관련인 기본 정보
+        lines.append(f"◆ 관련인 {idx}: {info.get('name', 'N/A')} (CID: {cust_id})")
+        lines.append("-" * 60)
+        
+        # 기본 정보 출력
+        lines.append(f"  • 실명번호: {info.get('id_number', 'N/A')}")
+        lines.append(f"  • 생년월일: {info.get('birth_date', 'N/A')} (만 {info.get('age', 'N/A')}세)")
+        lines.append(f"  • 성별: {info.get('gender', 'N/A')}")
+        lines.append(f"  • 거주지: {info.get('address', 'N/A')}")
+        
+        if info.get('job'):
+            lines.append(f"  • 직업: {info.get('job')}")
+        if info.get('workplace'):
+            lines.append(f"  • 직장명: {info.get('workplace')}")
+        if info.get('workplace_addr'):
+            lines.append(f"  • 직장주소: {info.get('workplace_addr')}")
+        
+        lines.append(f"  • 자금의 원천: {info.get('income_source', 'N/A')}")
+        lines.append(f"  • 거래목적: {info.get('tran_purpose', 'N/A')}")
+        lines.append(f"  • 위험등급: {info.get('risk_grade', 'N/A')}")
+        lines.append(f"  • 총 거래횟수: {info.get('total_tran_count', 0)}회")
+        lines.append("")
+        
+        # 거래 내역 요약
+        if transactions:
+            lines.append("  ▶ 거래 내역 (종목별)")
+            lines.append("  " + "-" * 56)
+            
+            # 내부입고/출고 분리
+            deposits = [t for t in transactions if t.get('tran_type') == '내부입고']
+            withdrawals = [t for t in transactions if t.get('tran_type') == '내부출고']
+            
+            if deposits:
+                lines.append("  [내부입고]")
+                for t in sorted(deposits, key=lambda x: float(x.get('tran_amt', 0) or 0), reverse=True):
+                    qty = float(t.get('tran_qty', 0) or 0)
+                    amt = float(t.get('tran_amt', 0) or 0)
+                    cnt = int(t.get('tran_cnt', 0) or 0)
+                    lines.append(f"    - {t.get('coin_symbol', 'N/A')}: "
+                               f"수량 {qty:,.4f}, "
+                               f"금액 {amt:,.0f}원, "
+                               f"건수 {cnt}건")
+            
+            if withdrawals:
+                lines.append("  [내부출고]")
+                for t in sorted(withdrawals, key=lambda x: float(x.get('tran_amt', 0) or 0), reverse=True):
+                    qty = float(t.get('tran_qty', 0) or 0)
+                    amt = float(t.get('tran_amt', 0) or 0)
+                    cnt = int(t.get('tran_cnt', 0) or 0)
+                    lines.append(f"    - {t.get('coin_symbol', 'N/A')}: "
+                               f"수량 {qty:,.4f}, "
+                               f"금액 {amt:,.0f}원, "
+                               f"건수 {cnt}건")
+        
+        lines.append("")
+    
+    lines.append("=" * 80)
+    
+    return "\n".join(lines)

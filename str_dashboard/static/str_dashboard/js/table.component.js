@@ -972,6 +972,79 @@
         initSectionToggle();
     }
     
+    // 개인 관련인 정보 렌더링 함수 추가
+    window.renderPersonRelatedSection = function(summaryText) {
+        const section = document.getElementById('section_person_related');
+        const container = document.getElementById('result_table_person_related');
+        
+        if (!section || !container) {
+            console.warn('Person related section or container not found');
+            return;
+        }
+        
+        // 섹션 표시
+        section.style.display = 'block';
+        
+        if (!summaryText) {
+            // 데이터가 없는 경우
+            container.innerHTML = `
+                <div class="card empty-row">
+                    내부입출금 거래 관련인 정보가 없습니다.
+                </div>
+            `;
+            return;
+        }
+        
+        // 텍스트 형식의 관련인 정보 표시
+        container.innerHTML = `
+            <div class="person-related-summary">
+                <pre class="summary-text">${escapeHtml(summaryText)}</pre>
+            </div>
+        `;
+        
+        // 스타일 적용
+        const style = document.createElement('style');
+        style.textContent = `
+            .person-related-summary {
+                background: #1a1a1a;
+                border: 1px solid #2a2a2a;
+                border-radius: 12px;
+                padding: 16px;
+                margin-top: 10px;
+            }
+            
+            .person-related-summary .summary-text {
+                font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+                font-size: 13px;
+                line-height: 1.5;
+                color: #eaeaea;
+                white-space: pre-wrap;
+                word-wrap: break-word;
+                margin: 0;
+                background: transparent;
+                border: none;
+            }
+            
+            .person-related-summary .summary-text strong {
+                color: #4fc3f7;
+            }
+        `;
+        
+        // 스타일이 이미 추가되지 않았다면 추가
+        if (!document.getElementById('person-related-style')) {
+            style.id = 'person-related-style';
+            document.head.appendChild(style);
+        }
+    };
+    
+    // HTML 이스케이프 헬퍼 함수
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+
     // 내보내기
     window.TableComponent = TableComponent;
 

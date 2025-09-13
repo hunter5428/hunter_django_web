@@ -114,6 +114,7 @@
         constructor() {
             this.searchBtn = $('#alert_id_search_btn');
             this.inputField = $('#alert_id_input');
+            this.alertData = null;  // Alert 데이터 저장
             this.init();
         }
 
@@ -172,6 +173,9 @@
                 
                 const processedData = this.processAlertData(cols, rows, alertId);
                 console.log('Processed data:', processedData);
+                
+                // Alert 데이터 저장 (나중에 사용)
+                this.alertData = { cols, rows, ...processedData };
                 
                 // 모든 섹션 데이터 조회 및 렌더링 (에러가 있어도 계속 진행)
                 await this.fetchAndRenderAllSections(processedData);
@@ -288,6 +292,10 @@
                     if (actualCustType === '법인') {
                         console.log('Fetching corp related persons...');
                         await this.fetchCorpRelatedPersons(custId);
+                    } else if (actualCustType === '개인') {
+                        // 개인인 경우 내부입출금 관련인 조회
+                        console.log('Fetching person related summary (internal transfers)...');
+                        await this.fetchPersonRelatedSummary(custId);
                     }
                     
                     // 개인/법인 구분 없이 중복 회원 검색 (데이터가 있는 경우만)
@@ -298,9 +306,11 @@
                 } else {
                     console.error('Person detail query failed:', detailData.message);
                     window.renderPersonDetailSection([], []);
-                    // 실패해도 법인인 경우 관련인 정보는 시도
+                    // 실패해도 고객 유형에 따른 관련인 정보는 시도
                     if (actualCustType === '법인') {
                         await this.fetchCorpRelatedPersons(custId);
+                    } else if (actualCustType === '개인') {
+                        await this.fetchPersonRelatedSummary(custId);
                     }
                 }
             } catch (error) {
@@ -335,6 +345,95 @@
                 // 에러가 있어도 빈 테이블 표시
                 window.renderCorpRelatedSection([], []);
             }
+        }
+
+        async fetchPersonRelatedSummary(custId) {
+            try {
+                // ALERT 데이터에서 거래 기간 추출
+                const tranPeriod = this.extractTransactionPeriod();
+                
+                if (!tranPeriod.start || !tranPeriod.end) {
+                    console.log('No transaction period found, skipping person related summary');
+                    window.renderPersonRelatedSection(null);
+                    return;
+                }
+                
+                console.log(`Fetching person related summary for period: ${tranPeriod.start} ~ ${tranPeriod.end}`);
+                
+                const response = await fetch(window.URLS.query_person_related_summary, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: new URLSearchParams({ 
+                        cust_id: String(custId),
+                        start_date: tranPeriod.start,
+                        end_date: tranPeriod.end
+                    })
+                });
+                
+                const relatedData = await response.json();
+                if (relatedData.success) {
+                    // 텍스트 형식으로 렌더링
+                    window.renderPersonRelatedSection(relatedData.summary_text);
+                } else {
+                    console.error('Person related summary query failed:', relatedData.message);
+                    window.renderPersonRelatedSection('관련인 정보 조회 실패: ' + relatedData.message);
+                }
+            } catch (error) {
+                console.error('Person related summary fetch failed:', error);
+                window.renderPersonRelatedSection('관련인 정보 조회 중 오류 발생');
+            }
+        }
+
+        extractTransactionPeriod() {
+            // Alert 데이터에서 TRAN_STRT와 TRAN_END 컬럼 찾기
+            if (!this.alertData) {
+                return { start: null, end: null };
+            }
+            
+            const { cols, rows } = this.alertData;
+            const idxTranStart = cols.indexOf('TRAN_STRT');
+            const idxTranEnd = cols.indexOf('TRAN_END');
+            
+            if (idxTranStart < 0 || idxTranEnd < 0) {
+                console.log('TRAN_STRT or TRAN_END columns not found');
+                return { start: null, end: null };
+            }
+            
+            let minStart = null;
+            let maxEnd = null;
+            
+            // 모든 행에서 최소 시작일과 최대 종료일 찾기
+            rows.forEach(row => {
+                const startDate = row[idxTranStart];
+                const endDate = row[idxTranEnd];
+                
+                if (startDate) {
+                    if (!minStart || startDate < minStart) {
+                        minStart = startDate;
+                    }
+                }
+                
+                if (endDate) {
+                    if (!maxEnd || endDate > maxEnd) {
+                        maxEnd = endDate;
+                    }
+                }
+            });
+            
+            // 날짜 형식 변환 (YYYY-MM-DD -> YYYY-MM-DD HH:MI:SS.FF9)
+            if (minStart) {
+                minStart = minStart + ' 00:00:00.000000000';
+            }
+            if (maxEnd) {
+                maxEnd = maxEnd + ' 23:59:59.999999999';
+            }
+            
+            console.log(`Extracted transaction period: ${minStart} ~ ${maxEnd}`);
+            
+            return { start: minStart, end: maxEnd };
         }
 
         async fetchDuplicatePersons(custId, columns, row, custType) {
