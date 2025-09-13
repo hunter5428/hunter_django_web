@@ -2,8 +2,8 @@
 
 /**
  * ALERT ID 조회 페이지 메인 JavaScript
+ * - 통합 고객 정보 조회 적용
  * - 테이블 컴포넌트 활용
- * - 기존 UX 유지
  * - 부분 실패 시에도 성공한 데이터는 표시
  */
 (function() {
@@ -163,7 +163,6 @@
                 
                 if (!alertData.success) {
                     alert(alertData.message || '조회 실패');
-                    // Alert 조회가 실패해도 다른 데이터는 조회 시도하지 않음
                     return;
                 }
 
@@ -183,7 +182,6 @@
             } catch (error) {
                 console.error('Alert search error:', error);
                 alert('조회 중 오류가 발생했습니다. 일부 데이터만 표시될 수 있습니다.');
-                // 에러가 있어도 가능한 데이터는 표시
             }
         }
 
@@ -225,9 +223,11 @@
             return { cols, rows, alertId, repRuleId, custIdForPerson, canonicalIds };
         }
 
-        async fetchPersonInfo(custId) {
+        // ==================== 통합 고객 정보 조회 ====================
+        async fetchCustomerInfo(custId) {
             try {
-                const response = await fetch(window.URLS.query_person, {
+                // 통합 API 호출 - 한 번의 요청으로 모든 고객 정보 조회
+                const response = await fetch(window.URLS.query_customer_unified, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded',
@@ -236,86 +236,44 @@
                     body: new URLSearchParams({ cust_id: String(custId) })
                 });
                 
-                const personData = await response.json();
-                if (personData.success) {
-                    window.renderPersonInfoSection(personData.columns || [], personData.rows || []);
+                const customerData = await response.json();
+                
+                if (customerData.success) {
+                    const customerType = customerData.customer_type;
+                    console.log(`Customer unified info loaded - type: ${customerType}, rows: ${customerData.rows?.length}`);
                     
-                    // 고객 구분 추출 (첫 번째 컬럼이 '고객구분'인 경우)
-                    if (personData.columns && personData.rows && personData.rows.length > 0) {
-                        const custTypeIdx = personData.columns.indexOf('고객구분');
-                        if (custTypeIdx >= 0) {
-                            const custType = personData.rows[0][custTypeIdx];
-                            console.log(`Customer type detected: ${custType}`);
-                            // 고객 상세 정보도 조회
-                            await this.fetchPersonDetailInfo(custId, custType);
-                        } else {
-                            console.log('Customer type not found, using default: 개인');
-                            // 고객구분이 없으면 기본값으로 조회
-                            await this.fetchPersonDetailInfo(custId, '개인');
-                        }
-                    }
-                } else {
-                    console.error('Person info query failed:', personData.message);
-                    window.renderPersonInfoSection([], []);
-                }
-            } catch (error) {
-                console.error('Person info fetch failed:', error);
-                window.renderPersonInfoSection([], []);
-            }
-        }
-
-        async fetchPersonDetailInfo(custId, custType) {
-            try {
-                // 고객 유형 확인 및 정확한 값 전달
-                const actualCustType = (custType === '법인') ? '법인' : '개인';
-                console.log(`Fetching detail for custId: ${custId}, type: ${actualCustType}`);
-                
-                const response = await fetch(window.URLS.query_person_detail, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
-                    body: new URLSearchParams({ 
-                        cust_id: String(custId),
-                        cust_type: actualCustType
-                    })
-                });
-                
-                const detailData = await response.json();
-                console.log(`Detail query response - success: ${detailData.success}, rows: ${detailData.rows ? detailData.rows.length : 0}`);
-                
-                if (detailData.success) {
-                    window.renderPersonDetailSection(detailData.columns || [], detailData.rows || []);
+                    // 통합 테이블 렌더링
+                    window.renderCustomerUnifiedSection(
+                        customerData.columns || [], 
+                        customerData.rows || []
+                    );
                     
-                    // 법인인 경우 관련인 정보 조회
-                    if (actualCustType === '법인') {
+                    // 고객 유형에 따른 추가 조회
+                    if (customerType === '법인') {
                         console.log('Fetching corp related persons...');
                         await this.fetchCorpRelatedPersons(custId);
-                    } else if (actualCustType === '개인') {
-                        // 개인인 경우 내부입출금 관련인 조회
-                        console.log('Fetching person related summary (internal transfers)...');
+                    } else if (customerType === '개인') {
+                        console.log('Fetching person related summary...');
                         await this.fetchPersonRelatedSummary(custId);
                     }
                     
-                    // 개인/법인 구분 없이 중복 회원 검색 (데이터가 있는 경우만)
-                    if (detailData.rows && detailData.rows.length > 0) {
-                        console.log(`Fetching duplicate persons for ${actualCustType}...`);
-                        await this.fetchDuplicatePersons(custId, detailData.columns, detailData.rows[0], actualCustType);
+                    // 중복 회원 검색 (데이터가 있는 경우만)
+                    if (customerData.rows && customerData.rows.length > 0) {
+                        console.log(`Fetching duplicate persons for ${customerType}...`);
+                        await this.fetchDuplicatePersons(
+                            custId, 
+                            customerData.columns, 
+                            customerData.rows[0], 
+                            customerType
+                        );
                     }
                 } else {
-                    console.error('Person detail query failed:', detailData.message);
-                    window.renderPersonDetailSection([], []);
-                    // 실패해도 고객 유형에 따른 관련인 정보는 시도
-                    if (actualCustType === '법인') {
-                        await this.fetchCorpRelatedPersons(custId);
-                    } else if (actualCustType === '개인') {
-                        await this.fetchPersonRelatedSummary(custId);
-                    }
+                    console.error('Customer info query failed:', customerData.message);
+                    window.renderCustomerUnifiedSection([], []);
                 }
             } catch (error) {
-                console.error('Person detail info fetch failed:', error);
-                window.renderPersonDetailSection([], []);
+                console.error('Customer info fetch failed:', error);
+                window.renderCustomerUnifiedSection([], []);
             }
         }
 
@@ -337,12 +295,10 @@
                     window.renderCorpRelatedSection(relatedData.columns || [], relatedData.rows || []);
                 } else {
                     console.error('Corp related persons query failed:', relatedData.message);
-                    // 실패해도 빈 테이블 표시
                     window.renderCorpRelatedSection([], []);
                 }
             } catch (error) {
                 console.error('Corp related persons fetch failed:', error);
-                // 에러가 있어도 빈 테이블 표시
                 window.renderCorpRelatedSection([], []);
             }
         }
@@ -375,7 +331,6 @@
                 
                 const relatedData = await response.json();
                 if (relatedData.success) {
-                    // 텍스트 형식으로 렌더링
                     window.renderPersonRelatedSection(relatedData.summary_text);
                 } else {
                     console.error('Person related summary query failed:', relatedData.message);
@@ -423,7 +378,7 @@
                 }
             });
             
-            // 날짜 형식 변환 (YYYY-MM-DD -> YYYY-MM-DD HH:MI:SS.FF9)
+            // 날짜 형식 변환
             if (minStart) {
                 minStart = minStart + ' 00:00:00.000000000';
             }
@@ -445,40 +400,22 @@
             
             if (custType === '법인') {
                 // 법인의 경우 매핑
-                emailIdx = columns.indexOf('E-mail');  // 대표자 이메일
-                phoneIdx = columns.indexOf('대표번호');  // 대표번호
-                
-                // 법인의 본점소재지 주소 사용
-                addressIdx = columns.indexOf('본점소재지주소');
-                detailAddressIdx = columns.indexOf('본점소재지상세주소');
-                
-                // 직장명은 법인명, 직장주소는 본점소재지
-                workplaceNameIdx = columns.indexOf('법인명');
-                workplaceAddressIdx = columns.indexOf('본점소재지주소');
-                workplaceDetailAddressIdx = columns.indexOf('본점소재지상세주소');
-                
-                console.log('Corp column indices:', {
-                    email: emailIdx,
-                    phone: phoneIdx,
-                    address: addressIdx,
-                    corpName: workplaceNameIdx
-                });
+                emailIdx = columns.indexOf('이메일');
+                phoneIdx = columns.indexOf('연락처');
+                addressIdx = columns.indexOf('거주지주소');
+                detailAddressIdx = columns.indexOf('거주지상세주소');
+                workplaceNameIdx = columns.indexOf('성명');  // 법인명
+                workplaceAddressIdx = columns.indexOf('거주지주소');
+                workplaceDetailAddressIdx = columns.indexOf('거주지상세주소');
             } else {
-                // 개인의 경우 기존 매핑
-                emailIdx = columns.indexOf('E-mail');
-                phoneIdx = columns.indexOf('휴대폰 번호');
-                addressIdx = columns.indexOf('거주주소');
-                detailAddressIdx = columns.indexOf('거주상세주소');
+                // 개인의 경우 매핑
+                emailIdx = columns.indexOf('이메일');
+                phoneIdx = columns.indexOf('연락처');
+                addressIdx = columns.indexOf('거주지주소');
+                detailAddressIdx = columns.indexOf('거주지상세주소');
                 workplaceNameIdx = columns.indexOf('직장명');
                 workplaceAddressIdx = columns.indexOf('직장주소');
                 workplaceDetailAddressIdx = columns.indexOf('직장상세주소');
-                
-                console.log('Personal column indices:', {
-                    email: emailIdx,
-                    phone: phoneIdx,
-                    address: addressIdx,
-                    workplace: workplaceNameIdx
-                });
             }
             
             // 값 추출
@@ -490,13 +427,11 @@
             let workplaceAddress = '';
             let workplaceDetailAddress = '';
             
-            // 이메일
             if (emailIdx >= 0 && row[emailIdx]) {
                 fullEmail = row[emailIdx];
-                console.log('Email found:', fullEmail.substring(0, fullEmail.indexOf('@')) + '@...');
+                console.log('Email found');
             }
             
-            // 전화번호 뒷자리
             if (phoneIdx >= 0 && row[phoneIdx]) {
                 const phone = String(row[phoneIdx]);
                 if (phone.length >= 4) {
@@ -505,26 +440,20 @@
                 }
             }
             
-            // 주소
             if (addressIdx >= 0) {
                 address = row[addressIdx] || '';
-                if (address) console.log('Address found');
             }
             
             if (detailAddressIdx >= 0) {
                 detailAddress = row[detailAddressIdx] || '';
             }
             
-            // 직장명
             if (workplaceNameIdx >= 0) {
                 workplaceName = row[workplaceNameIdx] || '';
-                if (workplaceName) console.log('Workplace name found:', workplaceName);
             }
             
-            // 직장주소
             if (workplaceAddressIdx >= 0) {
                 workplaceAddress = row[workplaceAddressIdx] || '';
-                if (workplaceAddress) console.log('Workplace address found');
             }
             
             if (workplaceDetailAddressIdx >= 0) {
@@ -539,16 +468,6 @@
             }
             
             try {
-                // 통합 API 호출 (단일 쿼리)
-                const startTime = performance.now();
-                console.log('Starting unified duplicate search...');
-                console.log('Search criteria:', {
-                    email: fullEmail ? 'yes' : 'no',
-                    address: address ? 'yes' : 'no',
-                    workplace: workplaceName || workplaceAddress ? 'yes' : 'no',
-                    phone_suffix: phoneSuffix || 'none'
-                });
-                
                 const response = await fetch(window.URLS.query_duplicate_unified, {
                     method: 'POST',
                     headers: {
@@ -568,16 +487,9 @@
                 });
                 
                 const result = await response.json();
-                const endTime = performance.now();
-                console.log(`Duplicate search completed in ${(endTime - startTime).toFixed(2)}ms`);
                 console.log(`Found ${result.rows ? result.rows.length : 0} duplicate records`);
                 
                 if (result.success) {
-                    // MATCH_TYPES 컬럼 처리
-                    const columns = result.columns || [];
-                    const rows = result.rows || [];
-                    
-                    // 매칭 정보 (표시용으로 이메일 앞부분만 추출)
                     let emailPrefix = '';
                     if (fullEmail) {
                         const atIndex = fullEmail.indexOf('@');
@@ -587,18 +499,18 @@
                     }
                     
                     const matchCriteria = {
-                        email_prefix: emailPrefix || null,  // UI 표시용
-                        full_email: fullEmail || null,      // 실제 비교용
+                        email_prefix: emailPrefix || null,
+                        full_email: fullEmail || null,
                         phone_suffix: phoneSuffix || null,
                         address: address || null,
                         detail_address: detailAddress || null,
                         workplace_name: workplaceName || null,
                         workplace_address: workplaceAddress || null,
                         workplace_detail_address: workplaceDetailAddress || null,
-                        customer_type: custType  // 고객 유형 추가
+                        customer_type: custType
                     };
                     
-                    window.renderDuplicatePersonsSection(columns, rows, matchCriteria);
+                    window.renderDuplicatePersonsSection(result.columns, result.rows, matchCriteria);
                 } else {
                     console.error('Duplicate query failed:', result.message);
                     window.renderDuplicatePersonsSection([], [], {});
@@ -613,12 +525,11 @@
         async fetchAndRenderAllSections(data) {
             const { cols, rows, alertId, repRuleId, custIdForPerson, canonicalIds } = data;
 
-            // 고객 정보 조회 (기본 정보 + 상세 정보)
+            // 통합 고객 정보 조회
             if (custIdForPerson) {
-                await this.fetchPersonInfo(custIdForPerson);
+                await this.fetchCustomerInfo(custIdForPerson);
             } else {
-                window.renderPersonInfoSection([], []);
-                window.renderPersonDetailSection([], []);
+                window.renderCustomerUnifiedSection([], []);
             }
 
             // RULE 히스토리 조회
@@ -643,18 +554,15 @@
                             historyData.similar_list || null
                         );
                     } else {
-                        // 실패해도 빈 테이블 표시
                         window.renderRuleHistorySection([], [], ruleKey, null);
                     }
                 } catch (error) {
                     console.error('Rule history fetch failed:', error);
-                    // 에러가 있어도 빈 테이블 표시
                     window.renderRuleHistorySection([], [], ruleKey, null);
                 }
             }
 
             // 나머지 섹션 렌더링 (테이블 컴포넌트 활용)
-            // 이 섹션들은 Alert 데이터에서 직접 렌더링하므로 항상 표시
             const ruleObjMap = window.RULE_OBJ_MAP || {};
             window.renderObjectivesSection(cols, rows, ruleObjMap, canonicalIds, repRuleId);
             window.renderAlertHistSection(cols, rows, alertId);

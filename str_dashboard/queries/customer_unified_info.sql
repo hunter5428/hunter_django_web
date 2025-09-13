@@ -1,0 +1,183 @@
+-- customer_unified_info.sql
+-- 고객 기본 정보 + 상세 정보 통합 쿼리
+-- 바인드 변수: :custId (1번 사용)
+
+SELECT 
+    -- ========== 식별 정보 ==========
+    c.CUST_ID AS "고객ID",
+    m.MEM_ID AS "MID",
+    c.CUST_KO_NM AS "성명",
+    c.CUST_EN_NM AS "영문명",
+    
+    -- ========== 고객 구분 및 상태 ==========
+    (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'CUST_TYPE_CD' AND AML_DTL_CD = c.CUST_TYPE_CD) AS "고객구분",
+    (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'CUST_RKGD_CD' AND AML_DTL_CD = ra.cust_rkgd_cd) AS "RA등급",
+    CASE
+        WHEN c.AM
+        L_RSLT_CD = '200' THEN 'WLF 검토대기'
+        WHEN c.AML_RSLT_CD = '400' THEN '거래거절'
+        WHEN c.AML_RSLT_CD = '600' THEN 'CDD'
+        WHEN c.AML_RSLT_CD = '700' THEN 'EDD'
+        WHEN c.AML_RSLT_CD = '800' THEN 'EEDD'
+        ELSE NULL
+    END AS "위험등급",
+    c.CLB_YN AS "고액자산가",
+    
+    -- ========== 신원 정보 ==========
+    (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'RLNM_CERT_CD' AND AML_DTL_CD = c.RLNM_CERT_CD) AS "실명번호구분",
+    AES_DECRYPT(c.RLNM_CERT_VAL) AS "실명번호",
+    NVL(c.CUST_BDAY, c.CORP_ESTB_DT) AS "생년월일/설립일",
+    (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'CUST_GNDR_CD' AND AML_DTL_CD = c.CUST_GNDR_CD) AS "성별",
+    
+    -- ========== 연락처 정보 ==========
+    AES_DECRYPT(c.CUST_TEL_NO) AS "연락처",
+    AES_DECRYPT(c.CUST_EMAIL) AS "이메일",
+    
+    -- ========== 국적 정보 ==========
+    n1.NAT_KO_NM AS "국적",
+    n1.LEN2_ABBR_NAT_CD AS "국적코드",
+    
+    -- ========== 거주지 정보 ==========
+    n2.NAT_KO_NM AS "거주지국가",
+    c.CUST_ZIPCD AS "거주지우편번호",
+    c.CUST_ADDR AS "거주지주소",
+    c.CUST_DTL_ADDR AS "거주지상세주소",
+    
+    -- ========== 직업/직장 정보 ==========
+    CASE
+        WHEN c.CUST_TYPE_CD = '01' THEN  -- 개인
+            CASE
+                WHEN j.JOB_LV_2_NM IS NULL THEN j.JOB_LV_1_NM
+                ELSE j.JOB_LV_1_NM || ' (' || j.JOB_LV_2_NM || ')'
+            END
+        ELSE  -- 법인
+            c.BZTYP_DTL_CTNT
+    END AS "직업/업종",
+    (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'JTTL_CD' AND AML_DTL_CD = c.JTTL_CD) AS "직위",
+    c.WPLC_NM AS "직장명",
+    n3.NAT_KO_NM AS "직장국가",
+    c.WPLC_ZIPCD AS "직장우편번호",
+    c.WPLC_ADDR AS "직장주소",
+    c.WPLC_DTL_ADDR AS "직장상세주소",
+    
+    -- ========== 거래 정보 ==========
+    CASE
+        WHEN c.CUST_TYPE_CD = '01' THEN  -- 개인
+            (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'PERS_TRAN_PUPS_CD' AND AML_DTL_CD = c.TRAN_PUPS_CD)
+        ELSE  -- 법인
+            (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'CORP_TRAN_PUPS_CD' AND AML_DTL_CD = c.TRAN_PUPS_CD)
+    END AS "거래목적",
+    
+    -- ========== 자금/소득 정보 ==========
+    CASE
+        WHEN c.CUST_TYPE_CD = '01' THEN  -- 개인
+            (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'PERS_PRMY_INCM_SURC_CD' AND AML_DTL_CD = c.PRMY_INCM_SURC_CD)
+        ELSE  -- 법인
+            (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'CORP_PRMY_INCM_SURC_CD' AND AML_DTL_CD = c.PRMY_INCM_SURC_CD)
+    END AS "주요소득원천",
+    
+    CASE
+        WHEN c.CUST_TYPE_CD = '01' THEN  -- 개인
+            (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'PERS_MM_AVG_INCM_RNGE_AMT_CD' AND AML_DTL_CD = c.MM_AVG_INCM_RNGE_AMT_CD)
+        ELSE  -- 법인
+            (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'CORP_MM_AVG_SALES_RNGE_AMT_CD' AND AML_DTL_CD = c.MM_AVG_SALES_RNGE_AMT_CD)
+    END AS "월평균소득/매출",
+    
+    CASE
+        WHEN c.CUST_TYPE_CD = '01' THEN  -- 개인
+            (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'PERS_DLNG_TRAN_FNDS_SURC_CD' AND AML_DTL_CD = c.DLNG_TRAN_FNDS_SURC_CD)
+        ELSE  -- 법인
+            (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'CORP_DLNG_TRAN_FNDS_SURC_CD' AND AML_DTL_CD = c.DLNG_TRAN_FNDS_SURC_CD)
+    END AS "매매거래자금원천",
+    
+    CASE
+        WHEN c.CUST_TYPE_CD = '01' THEN  -- 개인
+            (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'PERS_TOT_AST_SCL_CD' AND AML_DTL_CD = c.TOT_AST_SCL_CD)
+        ELSE  -- 법인
+            (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'CORP_TOT_AST_SCL_CD' AND AML_DTL_CD = c.TOT_AST_SCL_CD)
+    END AS "총자산규모",
+    
+    -- ========== 예상 거래 규모 ==========
+    CASE
+        WHEN c.CUST_TYPE_CD = '01' THEN  -- 개인
+            (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'PERS_MM_AVG_EXPT_TRAN_CNT_CD' AND AML_DTL_CD = c.MM_AVG_EXPT_TRAN_CNT_CD)
+        ELSE  -- 법인
+            (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'CORP_MM_AVG_EXPT_TRAN_CNT_CD' AND AML_DTL_CD = c.MM_AVG_EXPT_TRAN_CNT_CD)
+    END AS "월평균예상거래횟수",
+    
+    (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'MM_AVG_EXPT_IO_TRAN_SCL_CD' AND AML_DTL_CD = c.MM_AVG_EXPT_IO_TRAN_SCL_CD) AS "월평균예상거래규모_입출금",
+    (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'MM_AVG_EXPT_AST_TRAN_SCL_CD' AND AML_DTL_CD = c.MM_AVG_EXPT_AST_TRAN_SCL_CD) AS "월평균예상거래규모_가상자산",
+    
+    -- ========== STR 관련 정보 ==========
+    (SELECT COUNT(r.STR_RPT_MNGT_NO) 
+     FROM BTCAMLDB_OWN.STR_RPT_BASE r 
+     WHERE r.CUST_ID = c.CUST_ID 
+       AND r.XML_CRET_FILE_NM IS NOT NULL) AS "STR보고건수",
+    
+    (SELECT TO_CHAR(MAX(r.STR_RPT_DTM), 'YYYY-MM-DD') 
+     FROM BTCAMLDB_OWN.STR_RPT_BASE r 
+     WHERE r.CUST_ID = c.CUST_ID 
+       AND r.XML_CRET_FILE_NM IS NOT NULL) AS "최종STR보고일",
+    
+    (SELECT COUNT(*) 
+     FROM BTCAMLDB_OWN.STR_ALERT_LIST a 
+     WHERE a.CUST_ID = c.CUST_ID) AS "Alert건수",
+    
+    -- ========== 법인 전용 필드 (개인일 경우 NULL) ==========
+    CASE WHEN c.CUST_TYPE_CD = '02' THEN
+        (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'CORP_TYPE_CD' AND AML_DTL_CD = ce.CORP_TYPE_CD)
+    END AS "법인유형",
+    
+    CASE WHEN c.CUST_TYPE_CD = '02' THEN
+        (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'BZTYP_TYPE_CD' AND AML_DTL_CD = ce.BZTYP_TYPE_CD)
+    END AS "업종",
+    
+    CASE WHEN c.CUST_TYPE_CD = '02' THEN
+        (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'MKP_PTCP_STEP_CD' AND AML_DTL_CD = ce.MKP_PTCP_STEP_CD)
+    END AS "시장참여단계",
+    
+    CASE WHEN c.CUST_TYPE_CD = '02' THEN
+        (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'CORP_BELSTD_TYPE_CD' AND AML_DTL_CD = ce.CORP_BELSTD_TYPE_CD)
+    END AS "상장여부",
+    
+    CASE WHEN c.CUST_TYPE_CD = '02' THEN ce.DMST_DCL_TGT_VASP_YN END AS "국내신고대상VASP여부",
+    
+    -- ========== KYC 심사 정보 ==========
+    c.KYC_EXE_FNS_DTM AS "KYC완료일시",
+    (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'EXAM_RVIW_STAT_CD' AND AML_DTL_CD = c.EXAM_RVIW_STAT_CD) AS "심사상태"
+    
+FROM BTCAMLDB_OWN.KYC_CUST_BASE c
+-- 회원 정보
+INNER JOIN BTCAMLDB_OWN.KYC_MEM_BASE m
+    ON c.CUST_ID = m.CUST_ID
+-- RA 등급
+LEFT JOIN BTCAMLDB_OWN.RA_CUST_RKAT_GRD_LIST ra
+    ON ra.CUST_ID = c.CUST_ID
+    AND ra.RKAT_DTM = (
+        SELECT MAX(sub_ra.RKAT_DTM) 
+        FROM BTCAMLDB_OWN.RA_CUST_RKAT_GRD_LIST sub_ra 
+        WHERE sub_ra.CUST_ID = c.CUST_ID
+    )
+-- 직업 정보
+LEFT JOIN BTCAMLDB_OWN.KYC_JOB_BASE j
+    ON j.AML_JOB_CD = c.JOB_CD
+-- 국적
+LEFT JOIN BTCAMLDB_OWN.DM_SYS_NAT_BASE n1
+    ON n1.LEN3_ABBR_NAT_CD = c.CUST_NTNLT_CD
+-- 거주지 국가
+LEFT JOIN BTCAMLDB_OWN.DM_SYS_NAT_BASE n2
+    ON n2.LEN3_ABBR_NAT_CD = c.CUST_LIVE_NAT_CD
+-- 직장 국가
+LEFT JOIN BTCAMLDB_OWN.DM_SYS_NAT_BASE n3
+    ON n3.LEN3_ABBR_NAT_CD = c.WPLC_PST_NAT_CD
+-- 법인 정보 (법인인 경우만)
+LEFT JOIN (
+    SELECT /*+ no_merge push_pred */
+        ce_inner.*,
+        ROW_NUMBER() OVER (PARTITION BY ce_inner.CUST_ID ORDER BY ce_inner.KYC_EXAM_STRT_DTM DESC) AS rn
+    FROM BTCAMLDB_OWN.KYC_CORP_EXAM_LIST ce_inner
+) ce
+    ON ce.CUST_ID = c.CUST_ID 
+    AND ce.rn = 1
+    AND c.CUST_TYPE_CD = '02'  -- 법인인 경우만 조인
+WHERE c.CUST_ID = :custId

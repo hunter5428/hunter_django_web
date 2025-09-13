@@ -3,6 +3,7 @@
 /**
  * 통합 테이블 렌더링 컴포넌트
  * 모든 섹션의 테이블 렌더링을 표준화
+ * - 통합 고객 정보 테이블 추가
  */
 (function(window) {
     'use strict';
@@ -405,30 +406,146 @@
         }
     }
 
-
     /**
      * 특화된 테이블 컴포넌트들
      */
     
-    // 고객 정보 테이블 (2열 Key-Value 형태)
-    class PersonInfoTable extends TableComponent {
+    // ==================== 통합 고객 정보 테이블 ====================
+    class CustomerUnifiedTable extends TableComponent {
         constructor(containerId) {
             super(containerId, {
                 ...TableOptions.KEY_VALUE_2COL,
                 emptyMessage: '고객 정보가 없습니다.',
-                className: 'table-kv-2col person-info-table'
+                className: 'table-kv-2col customer-unified-table',
+                skipNull: true,
+                groupedSections: [
+                    {
+                        title: '기본 정보',
+                        fields: ['고객ID', 'MID', '성명', '영문명', '고객구분', '실명번호구분', '실명번호', '생년월일/설립일', '성별']
+                    },
+                    {
+                        title: '연락처 정보',
+                        fields: ['연락처', '이메일']
+                    },
+                    {
+                        title: '거주지 정보',
+                        fields: ['국적', '국적코드', '거주지국가', '거주지우편번호', '거주지주소', '거주지상세주소']
+                    },
+                    {
+                        title: '직장 정보',
+                        fields: ['직업/업종', '직위', '직장명', '직장국가', '직장우편번호', '직장주소', '직장상세주소']
+                    },
+                    {
+                        title: '거래 정보',
+                        fields: ['거래목적', '주요소득원천', '월평균소득/매출', '매매거래자금원천', '총자산규모', '월평균예상거래횟수', '월평균예상거래규모_입출금', '월평균예상거래규모_가상자산']
+                    },
+                    {
+                        title: '리스크 정보',
+                        fields: ['RA등급', '위험등급', '고액자산가', 'STR보고건수', '최종STR보고일', 'Alert건수']
+                    },
+                    {
+                        title: '법인 정보',
+                        fields: ['법인유형', '업종', '시장참여단계', '상장여부', '국내신고대상VASP여부'],
+                        condition: (data) => data['고객구분'] === '법인'
+                    },
+                    {
+                        title: 'KYC 심사 정보',
+                        fields: ['KYC완료일시', '심사상태']
+                    }
+                ]
             });
         }
-    }
-
-    // 고객 상세 정보 테이블 (2열 Key-Value 형태)
-    class PersonDetailTable extends TableComponent {
-        constructor(containerId) {
-            super(containerId, {
-                ...TableOptions.KEY_VALUE_2COL,
-                emptyMessage: '고객 상세 정보가 없습니다.',
-                className: 'table-kv-2col person-detail-table'
+        
+        render() {
+            if (!this.rows || this.rows.length === 0) {
+                this.renderEmpty();
+                return;
+            }
+            
+            const container = document.createElement('div');
+            container.className = 'customer-info-sections';
+            
+            const row = this.rows[0];
+            const dataMap = {};
+            
+            // 컬럼과 값 매핑
+            this.columns.forEach((col, idx) => {
+                dataMap[col] = row[idx];
             });
+            
+            // 각 섹션별로 렌더링
+            this.options.groupedSections.forEach(section => {
+                // 조건 체크 (법인 정보 등)
+                if (section.condition && !section.condition(dataMap)) {
+                    return;
+                }
+                
+                // 해당 섹션의 필드 중 값이 있는 것만 필터링
+                const sectionFields = section.fields.filter(field => 
+                    dataMap.hasOwnProperty(field) && dataMap[field] != null && dataMap[field] !== ''
+                );
+                
+                if (sectionFields.length === 0) {
+                    return;
+                }
+                
+                // 섹션 제목
+                const sectionTitle = document.createElement('h4');
+                sectionTitle.className = 'section-subtitle';
+                sectionTitle.textContent = section.title;
+                container.appendChild(sectionTitle);
+                
+                // 섹션 테이블
+                const table = document.createElement('table');
+                table.className = 'table-kv-2col';
+                const tbody = document.createElement('tbody');
+                
+                // 2열씩 배치
+                for (let i = 0; i < sectionFields.length; i += 2) {
+                    const tr = document.createElement('tr');
+                    
+                    // 첫 번째 컬럼
+                    const field1 = sectionFields[i];
+                    const th1 = document.createElement('th');
+                    th1.textContent = field1;
+                    tr.appendChild(th1);
+                    
+                    const td1 = document.createElement('td');
+                    td1.setAttribute('data-field', field1);
+                    td1.innerHTML = this.formatCellValue(dataMap[field1], field1);
+                    tr.appendChild(td1);
+                    
+                    // 두 번째 컬럼 (있는 경우)
+                    if (i + 1 < sectionFields.length) {
+                        const field2 = sectionFields[i + 1];
+                        const th2 = document.createElement('th');
+                        th2.textContent = field2;
+                        tr.appendChild(th2);
+                        
+                        const td2 = document.createElement('td');
+                        td2.setAttribute('data-field', field2);
+                        td2.innerHTML = this.formatCellValue(dataMap[field2], field2);
+                        tr.appendChild(td2);
+                    } else {
+                        // 빈 셀
+                        const th2 = document.createElement('th');
+                        th2.innerHTML = '&nbsp;';
+                        tr.appendChild(th2);
+                        
+                        const td2 = document.createElement('td');
+                        td2.innerHTML = '&nbsp;';
+                        tr.appendChild(td2);
+                    }
+                    
+                    tbody.appendChild(tr);
+                }
+                
+                table.appendChild(tbody);
+                container.appendChild(table);
+            });
+            
+            this.container.innerHTML = '';
+            this.container.appendChild(container);
         }
     }
 
@@ -443,7 +560,7 @@
         }
     }
 
-    // DuplicatePersonsTable 클래스 - NULL 컬럼 제외 처리 추가
+    // DuplicatePersonsTable 클래스 - NULL 컬럼 제외 처리
     class DuplicatePersonsTable extends TableComponent {
         constructor(containerId, matchCriteria) {
             super(containerId, {
@@ -452,12 +569,9 @@
                 showHeader: true
             });
             this.matchCriteria = matchCriteria || {};
-            this.visibleColumnIndices = [];  // NULL이 아닌 컬럼 인덱스
+            this.visibleColumnIndices = [];
         }
         
-        /**
-         * 데이터 설정 (오버라이드) - NULL 컬럼 필터링
-         */
         setData(columns, rows) {
             this.columns = columns || [];
             this.rows = rows || [];
@@ -466,8 +580,8 @@
             this.visibleColumnIndices = [];
             if (this.rows.length > 0) {
                 this.columns.forEach((col, idx) => {
-                    // MATCH_TYPE은 항상 제외
-                    if (col === 'MATCH_TYPE') return;
+                    // MATCH_TYPES는 항상 제외
+                    if (col === 'MATCH_TYPES') return;
                     
                     // 모든 행에서 해당 컬럼이 NULL인지 체크
                     const hasNonNullValue = this.rows.some(row => {
@@ -480,9 +594,9 @@
                     }
                 });
             } else {
-                // 데이터가 없으면 MATCH_TYPE 제외한 모든 컬럼 표시
+                // 데이터가 없으면 MATCH_TYPES 제외한 모든 컬럼 표시
                 this.columns.forEach((col, idx) => {
-                    if (col !== 'MATCH_TYPE') {
+                    if (col !== 'MATCH_TYPES') {
                         this.visibleColumnIndices.push(idx);
                     }
                 });
@@ -491,9 +605,6 @@
             return this;
         }
         
-        /**
-         * 테이블 헤더 생성 (오버라이드) - NULL 컬럼 제외
-         */
         createTableHeader() {
             const thead = document.createElement('thead');
             const tr = document.createElement('tr');
@@ -508,10 +619,6 @@
             return thead;
         }
         
-        /**
-         * 테이블 바디 생성 (오버라이드) - 매칭된 컬럼 강조 및 NULL 컬럼 제외
-         */
-        // table.component.js의 DuplicatePersonsTable 부분 수정 (선택사항)
         createTableBody() {
             const tbody = document.createElement('tbody');
             
@@ -523,7 +630,7 @@
             const workplaceNameIdx = this.columns.indexOf('직장명');
             const workplaceAddressIdx = this.columns.indexOf('직장주소');
             const workplaceDetailAddressIdx = this.columns.indexOf('직장상세주소');
-            const matchTypesIdx = this.columns.indexOf('MATCH_TYPES');  // 변경: MATCH_TYPE → MATCH_TYPES
+            const matchTypesIdx = this.columns.indexOf('MATCH_TYPES');
             
             this.rows.forEach((row, rowIndex) => {
                 const tr = document.createElement('tr');
@@ -571,7 +678,7 @@
         }
     }
 
-    // Rule 히스토리 테이블 (여러 유사 조합 표시 버전)
+    // Rule 히스토리 테이블
     class RuleHistoryTable extends TableComponent {
         constructor(containerId) {
             super(containerId, {
@@ -587,31 +694,23 @@
             this.similarList = null;
         }
         
-        /**
-         * 검색된 RULE과 유사 데이터 설정
-         */
         setSearchInfo(searchedRule, similarList) {
             this.searchedRule = searchedRule;
             this.similarList = similarList;
             return this;
         }
         
-        /**
-         * 빈 상태 렌더링 (오버라이드)
-         */
         renderEmpty() {
             if (!this.container) return;
             
             let html = '';
             
             if (this.searchedRule) {
-                // 검색된 RULE 조합 표시
                 html = `<div class="card empty-row" style="text-align: left;">
                     <p style="margin-bottom: 10px;">
                         <strong>해당 RULE 조합 (${this.escapeHtml(this.searchedRule)})에 대한 히스토리가 없습니다.</strong>
                     </p>`;
                 
-                // 유사한 조합들이 있는 경우
                 if (this.similarList && this.similarList.length > 0) {
                     const similarity = Math.round(this.similarList[0].similarity * 100);
                     const count = this.similarList.length;
@@ -638,7 +737,6 @@
                             </thead>
                             <tbody>`;
                     
-                    // 각 유사 조합을 테이블 행으로 추가
                     this.similarList.forEach((similar, index) => {
                         html += `
                                 <tr${index === 0 ? ' style="background: #2a2a2a;"' : ''}>
@@ -654,7 +752,6 @@
                         </table>
                     </div>`;
                 } else {
-                    // 유사한 조합도 없는 경우
                     html += `
                     <p style="margin-top: 10px; color: #bdbdbd;">
                         유사한 RULE 조합도 존재하지 않습니다.
@@ -663,7 +760,6 @@
                 
                 html += '</div>';
             } else {
-                // 기본 메시지
                 html = `<div class="card empty-row">
                     ${this.escapeHtml(this.options.emptyMessage)}
                 </div>`;
@@ -679,7 +775,6 @@
             super(containerId, {
                 className: 'table alert-history-table',
                 highlightRow: (row, index) => {
-                    // alertId와 일치하는 행 하이라이트
                     const alertIdCol = this.columns?.indexOf('STR_ALERT_ID');
                     return alertIdCol >= 0 && String(row[alertIdCol]) === String(alertId);
                 },
@@ -696,7 +791,6 @@
                 emptyMessage: '객관식 정보가 없습니다.',
                 formatters: {
                     '객관식정보': (value) => {
-                        // 줄바꿈 처리
                         return value ? value.replace(/\n/g, '<br>') : '-';
                     }
                 },
@@ -711,9 +805,6 @@
             this.repRuleId = repRuleId;
         }
         
-        /**
-         * 객관식 데이터로 변환하여 렌더링
-         */
         renderFromAlertData(cols, rows, canonicalIds) {
             const idxRuleId = cols.indexOf('STR_RULE_ID');
             const idxRuleName = cols.indexOf('STR_RULE_NM');
@@ -761,9 +852,6 @@
             this.repRuleId = repRuleId;
         }
         
-        /**
-         * Alert 데이터에서 DISTINCT Rule 추출하여 렌더링
-         */
         renderFromAlertData(cols, rows, canonicalIds) {
             const indices = {
                 STR_RULE_ID: cols.indexOf('STR_RULE_ID'),
@@ -814,23 +902,14 @@
     }
 
     /**
-     * 팩토리 함수 - 전역 렌더링 함수들을 대체
+     * 팩토리 함수 - 전역 렌더링 함수들
      */
     window.TableRenderer = {
         /**
-         * 고객 정보 렌더링
+         * 통합 고객 정보 렌더링
          */
-        renderPersonInfo(containerId, columns, rows) {
-            const table = new PersonInfoTable(containerId);
-            table.setData(columns, rows);
-            table.render();
-        },
-        
-        /**
-         * 고객 상세 정보 렌더링
-         */
-        renderPersonDetail(containerId, columns, rows) {
-            const table = new PersonDetailTable(containerId);
+        renderCustomerUnified(containerId, columns, rows) {
+            const table = new CustomerUnifiedTable(containerId);
             table.setData(columns, rows);
             table.render();
         },
@@ -849,12 +928,11 @@
          */
         renderAlertHistory(containerId, columns, rows, alertId) {
             const table = new AlertHistoryTable(containerId, alertId);
-            // 필요한 컬럼만 필터링 (TRAN_STRT, TRAN_END 추가)
+            // 필요한 컬럼만 필터링
             const visibleCols = ['STDS_DTM', 'CUST_ID', 'STR_RULE_ID', 'STR_ALERT_ID', 'STR_RPT_MNGT_NO', 'STR_RULE_NM', 'TRAN_STRT', 'TRAN_END'];
             const colIndices = visibleCols.map(col => columns.indexOf(col));
             
             if (colIndices.some(idx => idx < 0)) {
-                // 일부 컬럼이 없어도 있는 컬럼만 표시
                 const availableCols = [];
                 const availableIndices = [];
                 visibleCols.forEach((col, i) => {
@@ -902,20 +980,24 @@
         }
     };
     
-    // 기존 전역 함수들과의 호환성 유지
-    window.renderPersonInfoSection = function(columns, rows) {
-        const section = document.getElementById('section_person_info');
+    // ==================== 전역 렌더링 함수들 ====================
+    
+    // 통합 고객 정보 렌더링
+    window.renderCustomerUnifiedSection = function(columns, rows) {
+        const section = document.getElementById('section_customer_unified');
         if (section) section.style.display = 'block';
-        window.TableRenderer.renderPersonInfo('result_table_person_info', columns, rows);
+        
+        // 기존 섹션들 숨기기 (하위 호환성)
+        const oldSections = ['section_person_info', 'section_person_detail'];
+        oldSections.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+        
+        window.TableRenderer.renderCustomerUnified('result_table_customer_unified', columns, rows);
     };
     
-    window.renderPersonDetailSection = function(columns, rows) {
-        const section = document.getElementById('section_person_detail');
-        if (section) section.style.display = 'block';
-        window.TableRenderer.renderPersonDetail('result_table_person_detail', columns, rows);
-    };
-    
-    // 법인 관련인 정보 렌더링 함수
+    // 법인 관련인 정보 렌더링
     window.renderCorpRelatedSection = function(columns, rows) {
         const section = document.getElementById('section_corp_related');
         if (section) {
@@ -926,7 +1008,7 @@
         }
     };
     
-    // 전역 함수 수정 - renderRuleHistorySection
+    // Rule 히스토리 렌더링
     window.renderRuleHistorySection = function(columns, rows, searchedRule, similarList) {
         const section = document.getElementById('section_rule_hist');
         if (section) section.style.display = 'block';
@@ -937,25 +1019,28 @@
         table.render();
     };  
     
+    // Alert 히스토리 렌더링
     window.renderAlertHistSection = function(cols, rows, alertId) {
         const section = document.getElementById('section_alert_rule');
         if (section) section.style.display = 'block';
         window.TableRenderer.renderAlertHistory('result_table_alert_rule', cols, rows, alertId);
     };
     
+    // 의심거래 객관식 렌더링
     window.renderObjectivesSection = function(cols, rows, ruleObjMap, canonicalIds, repRuleId) {
         const section = document.getElementById('section_objectives');
         if (section) section.style.display = 'block';
         window.TableRenderer.renderObjectives('result_table_objectives', cols, rows, ruleObjMap, canonicalIds, repRuleId);
     };
     
+    // Rule 설명 렌더링
     window.renderRuleDescSection = function(cols, rows, canonicalIds, repRuleId) {
         const section = document.getElementById('section_rule_distinct');
         if (section) section.style.display = 'block';
         window.TableRenderer.renderRuleDescription('result_table_rule_distinct', cols, rows, canonicalIds, repRuleId);
     };
 
-    // 전역 렌더링 함수 추가 - 동일_차명의심_상세 정보
+    // 동일_차명의심_상세 정보 렌더링
     window.renderDuplicatePersonsSection = function(columns, rows, matchCriteria) {
         const section = document.getElementById('section_duplicate_persons');
         if (section) section.style.display = 'block';
@@ -965,14 +1050,7 @@
         table.render();
     };
 
-    // DOM 준비 후 섹션 토글 초기화
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initSectionToggle);
-    } else {
-        initSectionToggle();
-    }
-    
-    // 개인 관련인 정보 렌더링 함수 추가
+    // 개인 관련인 정보 렌더링
     window.renderPersonRelatedSection = function(summaryText) {
         const section = document.getElementById('section_person_related');
         const container = document.getElementById('result_table_person_related');
@@ -982,11 +1060,9 @@
             return;
         }
         
-        // 섹션 표시
         section.style.display = 'block';
         
         if (!summaryText) {
-            // 데이터가 없는 경우
             container.innerHTML = `
                 <div class="card empty-row">
                     내부입출금 거래 관련인 정보가 없습니다.
@@ -1028,6 +1104,56 @@
             .person-related-summary .summary-text strong {
                 color: #4fc3f7;
             }
+            
+            /* 통합 고객 정보 섹션 스타일 */
+            .customer-info-sections {
+                padding: 10px;
+            }
+            
+            .customer-info-sections .section-subtitle {
+                margin: 20px 0 10px 0;
+                padding: 8px 12px;
+                background: linear-gradient(90deg, #2a2a2a 0%, transparent 100%);
+                border-left: 3px solid #4fc3f7;
+                color: #4fc3f7;
+                font-size: 14px;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+            }
+            
+            .customer-info-sections .section-subtitle:first-child {
+                margin-top: 0;
+            }
+            
+            .customer-info-sections .table-kv-2col {
+                margin-bottom: 15px;
+                background: #1a1a1a;
+                border-radius: 8px;
+            }
+            
+            .customer-info-sections .table-kv-2col th {
+                background: #151515;
+                font-size: 12px;
+                color: #9a9a9a;
+            }
+            
+            .customer-info-sections .table-kv-2col td {
+                font-size: 13px;
+                color: #eaeaea;
+            }
+            
+            .customer-info-sections .table-kv-2col td[data-field="고객ID"],
+            .customer-info-sections .table-kv-2col td[data-field="성명"],
+            .customer-info-sections .table-kv-2col td[data-field="위험등급"] {
+                font-weight: 600;
+                color: #4fc3f7;
+            }
+            
+            .customer-info-sections .table-kv-2col td[data-field="STR보고건수"]:not(:empty),
+            .customer-info-sections .table-kv-2col td[data-field="Alert건수"]:not(:empty) {
+                color: #ffa726;
+                font-weight: 600;
+            }
         `;
         
         // 스타일이 이미 추가되지 않았다면 추가
@@ -1044,8 +1170,15 @@
         return div.innerHTML;
     }
 
+    // DOM 준비 후 섹션 토글 초기화
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initSectionToggle);
+    } else {
+        initSectionToggle();
+    }
 
     // 내보내기
     window.TableComponent = TableComponent;
+    window.CustomerUnifiedTable = CustomerUnifiedTable;
 
 })(window);

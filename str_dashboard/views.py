@@ -162,69 +162,50 @@ def query_alert_info(request, oracle_conn=None):
         })
 
 
+
+
+# views.py에 추가할 함수
+
 @login_required
 @require_POST
 @require_db_connection
-def query_person_info(request, oracle_conn=None):
-    """고객 정보 조회"""
+def query_customer_unified_info(request, oracle_conn=None):
+    """통합 고객 정보 조회 (기본 + 상세)"""
     cust_id = request.POST.get('cust_id', '').strip()
+    
     if not cust_id:
         return HttpResponseBadRequest('Missing cust_id.')
     
-    # 쿼리 실행
+    logger.info(f"Querying unified customer info for cust_id: {cust_id}")
+    
+    # 통합 쿼리 실행
     result = execute_query_with_error_handling(
         oracle_conn=oracle_conn,
-        sql_filename='person_info.sql',
+        sql_filename='customer_unified_info.sql',
         bind_params={':custId': '?'},
         query_params=[cust_id]
     )
     
-    return JsonResponse(result)
-
-
-# str_dashboard/views.py의 query_person_detail_info 함수 수정
-@login_required
-@require_POST
-@require_db_connection
-def query_person_detail_info(request, oracle_conn=None):
-    """고객 상세 정보 조회 (개인/법인 구분)"""
-    cust_id = request.POST.get('cust_id', '').strip()
-    cust_type = request.POST.get('cust_type', '').strip()  # '개인' or '법인'
-    
-    if not cust_id:
-        return HttpResponseBadRequest('Missing cust_id.')
-    
-    # 고객 유형에 따라 다른 SQL 파일 사용
-    if cust_type == '법인':
-        sql_filename = 'corp_detail_info.sql'
-        # corp_detail_info.sql은 :custId를 한 번만 사용 (최종 WHERE 절에서)
-        bind_params = {':custId': '?'}
-        query_params = [cust_id]
-    else:
-        sql_filename = 'person_detail_info.sql'
-        # person_detail_info.sql도 :custId를 한 번만 사용
-        bind_params = {':custId': '?'}
-        query_params = [cust_id]
-    
-    logger.info(f"Querying {sql_filename} for cust_id: {cust_id}, type: {cust_type}")
-    
-    # 쿼리 실행
-    result = execute_query_with_error_handling(
-        oracle_conn=oracle_conn,
-        sql_filename=sql_filename,
-        bind_params=bind_params,
-        query_params=query_params
-    )
-    
-    # 디버깅 정보 추가
     if result.get('success'):
-        logger.info(f"Query successful - rows returned: {len(result.get('rows', []))}")
-        if result.get('rows'):
-            logger.debug(f"First row columns count: {len(result.get('rows')[0])}")
+        # 결과에서 고객 구분 추출
+        columns = result.get('columns', [])
+        rows = result.get('rows', [])
+        
+        customer_type = None
+        if rows and len(rows) > 0:
+            cust_type_idx = columns.index('고객구분') if '고객구분' in columns else -1
+            if cust_type_idx >= 0:
+                customer_type = rows[0][cust_type_idx]
+        
+        # 응답에 고객 유형 추가
+        result['customer_type'] = customer_type
+        
+        logger.info(f"Unified query successful - customer_type: {customer_type}, rows: {len(rows)}")
     else:
-        logger.error(f"Query failed: {result.get('message')}")
+        logger.error(f"Unified query failed: {result.get('message')}")
     
     return JsonResponse(result)
+
 
 
 
@@ -452,8 +433,6 @@ def query_corp_related_persons(request, oracle_conn=None):
 
 
 
-
-# views.py에 추가할 함수
 
 @login_required
 @require_POST

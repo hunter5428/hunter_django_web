@@ -24,19 +24,13 @@
     <button class="btn" id="alert_id_search_btn">조회</button>
 </div>
 
-<!-- 섹션: 고객정보 -->
-<div id="section_person_info" class="section" style="display:none;">
-    <h3>고객 기본 정보</h3>
-    <div class="table-wrap" id="result_table_person_info"></div>
+<!-- 섹션: 통합 고객 정보 (기존 고객정보 + 고객 상세 정보) -->
+<div id="section_customer_unified" class="section" style="display:none;">
+    <h3>고객 정보</h3>
+    <div class="table-wrap" id="result_table_customer_unified"></div>
 </div>
 
-<!-- 섹션: 고객 상세 정보 -->
-<div id="section_person_detail" class="section" style="display:none;">
-    <h3>고객 상세 정보</h3>
-    <div class="table-wrap" id="result_table_person_detail"></div>
-</div>
-
-<!-- 섹션: 법인 관련인 정보 (위치 이동) -->
+<!-- 섹션: 법인 관련인 정보 -->
 <div id="section_corp_related" class="section" style="display:none;">
     <h3>법인 관련인 정보</h3>
     <div class="table-wrap" id="result_table_corp_related"></div>
@@ -113,12 +107,14 @@ window.RULE_OBJ_MAP = {{ rule_obj_map_json|safe }};
 window.URLS = {
     test_connection: "{% url 'test_oracle_connection' %}",
     query_alert: "{% url 'query_alert_info' %}",
-    query_person: "{% url 'query_person_info' %}",
-    query_person_detail: "{% url 'query_person_detail_info' %}",
+    // 통합 API 추가 (기존 개별 API는 제거 또는 주석 처리)
+    query_customer_unified: "{% url 'query_customer_unified' %}",  // ★ 추가
+    // query_person: "{% url 'query_person_info' %}",  // 제거 또는 주석
+    // query_person_detail: "{% url 'query_person_detail_info' %}",  // 제거 또는 주석
     rule_history: "{% url 'rule_history_search' %}",
     query_duplicate_unified: "{% url 'query_duplicate_unified' %}",
     query_corp_related_persons: "{% url 'query_corp_related_persons' %}",
-    query_person_related_summary: "{% url 'query_person_related_summary' %}"  // 새로 추가
+    query_person_related_summary: "{% url 'query_person_related_summary' %}"
 };
 </script>
 
@@ -127,4 +123,4 @@ window.URLS = {
 
 <!-- 페이지 메인 로직 -->
 <script src="{% static 'str_dashboard/js/menu1_1.js' %}"></script>
-{% endblock %}
+{% endblock %

@@ -1,0 +1,74 @@
+/* 통합 고객 정보 섹션 스타일 */
+
+.customer-info-sections {
+    padding: 10px;
+}
+
+/* 서브섹션 제목 */
+.customer-info-sections .section-subtitle {
+    margin: 20px 0 10px 0;
+    padding: 8px 12px;
+    background: linear-gradient(90deg, #2a2a2a 0%, transparent 100%);
+    border-left: 3px solid #4fc3f7;
+    color: #4fc3f7;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.customer-info-sections .section-subtitle:first-child {
+    margin-top: 0;
+}
+
+/* 각 서브섹션의 테이블 */
+.customer-info-sections .table-kv-2col {
+    margin-bottom: 15px;
+    background: #1a1a1a;
+    border-radius: 8px;
+}
+
+.customer-info-sections .table-kv-2col th {
+    background: #151515;
+    font-size: 12px;
+    color: #9a9a9a;
+}
+
+.customer-info-sections .table-kv-2col td {
+    font-size: 13px;
+    color: #eaeaea;
+}
+
+/* 중요 필드 강조 */
+.customer-info-sections .table-kv-2col td[data-field="고객ID"],
+.customer-info-sections .table-kv-2col td[data-field="성명"],
+.customer-info-sections .table-kv-2col td[data-field="위험등급"] {
+    font-weight: 600;
+    color: #4fc3f7;
+}
+
+/* NULL 값 표시 */
+.customer-info-sections .null-value {
+    color: #666;
+    font-style: italic;
+}
+
+/* 리스크 정보 강조 */
+.customer-info-sections .table-kv-2col td[data-field="STR보고건수"]:not(:empty),
+.customer-info-sections .table-kv-2col td[data-field="Alert건수"]:not(:empty) {
+    color: #ffa726;
+    font-weight: 600;
+}
+
+/* 반응형 처리 */
+@media (max-width: 768px) {
+    .customer-info-sections .section-subtitle {
+        font-size: 13px;
+        padding: 6px 10px;
+    }
+    
+    .customer-info-sections .table-kv-2col th,
+    .customer-info-sections .table-kv-2col td {
+        font-size: 11px;
+        padding: 8px;
+    }
+}
