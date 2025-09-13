@@ -34,7 +34,7 @@ SELECT
     (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'CUST_GNDR_CD' AND AML_DTL_CD = c.CUST_GNDR_CD) AS "성별",
     
     -- ========== 연락처 정보 ==========
-    COALESCE(AES_DECRYPT(ce.CUST_TEL_NO), AES_DECRYPT(c.CUST_TEL_NO), AES_DECRYPT(c.CUST_CEL_NO)) AS "연락처",
+    COALESCE(AES_DECRYPT(ce.CUST_TEL_NO), AES_DECRYPT(c.CUST_TEL_NO)) AS "연락처",
     COALESCE(AES_DECRYPT(ce.CUST_EMAIL), AES_DECRYPT(c.CUST_EMAIL)) AS "이메일",
     
     -- ========== 국적 정보 ==========

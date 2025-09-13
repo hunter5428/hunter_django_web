@@ -1,0 +1,307 @@
+개인 정보 조회
+-- 고객확인 주요 정보(개인)
+select KYC_CUST_BASE.CUST_ID "고객ID",
+       KYC_CUST_BASE.KYC_EXE_MEM_ID "MID",
+       KYC_CUST_BASE.KYC_EXE_FNS_DTM,
+       KYC_CUST_BASE.EXAM_RVIW_STAT_CD,
+       KYC_CUST_BASE.CUST_KO_NM "성명",
+       KYC_CUST_BASE.CUST_EN_NM "영문명",
+       (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'RLNM_CERT_CD' AND AML_DTL_CD = KYC_CUST_BASE.RLNM_CERT_CD) "실명번호 구분",
+       AES_DECRYPT(KYC_CUST_BASE.RLNM_CERT_VAL) "실명번호",
+       KYC_CUST_BASE.CUST_BDAY "생년월일",
+       AES_DECRYPT(KYC_CUST_BASE.CUST_EMAIL)    "E-mail",
+       QSysNatBaseDmEntity1.NAT_KO_NM "국적",
+       AES_DECRYPT(KYC_CUST_BASE.CUST_TEL_NO)   "휴대폰 번호",
+       QSysNatBaseDmEntity2.NAT_KO_NM "거주주소국가",
+       KYC_CUST_BASE.CUST_ZIPCD "거주주소우편번호",
+       KYC_CUST_BASE.CUST_ADDR "거주주소",
+       KYC_CUST_BASE.CUST_DTL_ADDR "거주상세주소",
+       KYC_JOB_BASE.JOB_LV_1_NM "직업/업종",
+       KYC_JOB_BASE.JOB_LV_2_NM "직업/업종상세",
+       KYC_CUST_BASE.WPLC_NM "직장명",
+       QSysNatBaseDmEntity3.NAT_KO_NM "직장주소국가",
+       KYC_CUST_BASE.WPLC_ZIPCD "직장주소우편번호",
+       KYC_CUST_BASE.WPLC_ADDR "직장주소",
+       KYC_CUST_BASE.WPLC_DTL_ADDR "직장상세주소",
+       (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'PERS_TRAN_PUPS_CD' AND AML_DTL_CD = KYC_CUST_BASE.TRAN_PUPS_CD) "거래목적",
+       (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'PERS_PRMY_INCM_SURC_CD' AND AML_DTL_CD = KYC_CUST_BASE.PRMY_INCM_SURC_CD) "주요 소득의 원천",
+       (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'PERS_MM_AVG_INCM_RNGE_AMT_CD' AND AML_DTL_CD = KYC_CUST_BASE.MM_AVG_INCM_RNGE_AMT_CD) "월 평균 소득액",
+       (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'PERS_DLNG_TRAN_FNDS_SURC_CD' AND AML_DTL_CD = KYC_CUST_BASE.DLNG_TRAN_FNDS_SURC_CD) "매매거래자금의원천상세",
+       (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'PERS_TOT_AST_SCL_CD' AND AML_DTL_CD = KYC_CUST_BASE.TOT_AST_SCL_CD) "총 자산의규모",
+       (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'PERS_MM_AVG_EXPT_TRAN_CNT_CD' AND AML_DTL_CD = KYC_CUST_BASE.MM_AVG_EXPT_TRAN_CNT_CD) "월 평균 예상 거래 횟수",
+       (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'JTTL_CD' AND AML_DTL_CD = KYC_CUST_BASE.JTTL_CD) "직위",
+       (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'MM_AVG_EXPT_IO_TRAN_SCL_CD' AND AML_DTL_CD = KYC_CUST_BASE.MM_AVG_EXPT_IO_TRAN_SCL_CD) "월평균예상거래규모(입출금)",
+       (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'MM_AVG_EXPT_AST_TRAN_SCL_CD' AND AML_DTL_CD = KYC_CUST_BASE.MM_AVG_EXPT_AST_TRAN_SCL_CD) "월평균예상거래규모(가상자산)"
+from BTCAMLDB_OWN.KYC_CUST_BASE KYC_CUST_BASE
+         left join BTCAMLDB_OWN.KYC_JOB_BASE KYC_JOB_BASE
+                   on KYC_CUST_BASE.JOB_CD = KYC_JOB_BASE.AML_JOB_CD
+         left join BTCAMLDB_OWN.DM_SYS_NAT_BASE QSysNatBaseDmEntity1
+                   on KYC_CUST_BASE.CUST_NTNLT_CD = QSysNatBaseDmEntity1.LEN3_ABBR_NAT_CD
+         left join BTCAMLDB_OWN.DM_SYS_NAT_BASE QSysNatBaseDmEntity2
+                   on KYC_CUST_BASE.CUST_LIVE_NAT_CD = QSysNatBaseDmEntity2.LEN3_ABBR_NAT_CD
+         left join BTCAMLDB_OWN.DM_SYS_NAT_BASE QSysNatBaseDmEntity3
+                   on KYC_CUST_BASE.WPLC_PST_NAT_CD = QSysNatBaseDmEntity3.LEN3_ABBR_NAT_CD
+where KYC_CUST_BASE.CUST_ID = 5930535
+;
+
+-- 금융소득유형, 금융소득유형소득구간
+-- 고객확인 시 N개 선택 가능하여 별도 테이블로 관리합니다.
+select (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'PERS_DLNG_TRAN_FNDS_SURC_CD' AND AML_DTL_CD = DLNG_TRAN_FNDS_SURC_CD) "금융소득유형",
+       (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'PERS_EEDD_AVG_INCM_RNGE_AMT_CD' AND AML_DTL_CD = EEDD_MM_AVG_INCM_RNGE_AMT_CD) "금융소득유형소득구간"
+from BTCAMLDB_OWN.DM_CS_PERS_CUST_FNDS_SURC_DTL DM_CS_PERS_CUST_FNDS_SURC_DTL
+where DM_CS_PERS_CUST_FNDS_SURC_DTL.CUST_ID = 5930535
+;
+개인 정보 조회
+
+select c1_0.cust_ko_nm                                                                                             "성명",
+       AES_DECRYPT(RLNM_CERT_VAL)                                                                                  "실명번호",
+       CUST_BDAY                                                                                                   "생년월일 -> 어플리케이션 단에서 만 나이 구할 때 사용",
+       (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'CUST_GNDR_CD' and AML_DTL_CD = c1_0.cust_gndr_cd) "성별",
+       ((c1_0.cust_addr || ' ') || c1_0.cust_dtl_addr)                                                             "거주지 정보",
+       case
+           when (j1_0.job_lv_2_id is not null) then (((j1_0.job_lv_1_nm || '(') || j1_0.job_lv_2_nm) || ')')
+           else j1_0.job_lv_1_nm end as                                                                            "직업",
+       c1_0.wplc_nm                                                                                                "직장명",
+       ((c1_0.wplc_addr || ' ') || c1_0.wplc_dtl_addr)                                                             "직장주소",
+       (SELECT AML_DTL_CD_NM
+        FROM SM_CD_DTL
+        WHERE AML_COMN_CD = 'PERS_PRMY_INCM_SURC_CD'
+          and AML_DTL_CD = c1_0.prmy_incm_surc_cd)                                                                 "자금의 원천",
+       (SELECT AML_DTL_CD_NM
+        FROM SM_CD_DTL
+        WHERE AML_COMN_CD = 'PERS_TRAN_PUPS_CD'
+          and AML_DTL_CD = c1_0.tran_pups_cd)                                                                      "거래목적",
+       case
+           when c1_0.AML_RSLT_CD = '200' then 'WLF 검토대기'
+           when c1_0.AML_RSLT_CD = '400' then '거래거절'
+           when c1_0.AML_RSLT_CD = '600' then 'CDD'
+           when c1_0.AML_RSLT_CD = '700' then 'EDD'
+           when c1_0.AML_RSLT_CD = '800' then 'EEDD'
+           end                       as                                                                            "위험 등급"
+from btcamldb_own.kyc_cust_base c1_0
+         left join btcamldb_own.kyc_job_base j1_0 on c1_0.job_cd = j1_0.aml_job_cd
+         left join btcamldb_own.kyc_bztyp_base b1_0 on c1_0.bztyp_type_cd = b1_0.aml_bztyp_type_cd
+where c1_0.cust_id = :cust_id
+;
+
+-법인조회 쿼리
+
+select
+    KYC_CORP_EXAM_LIST.CUST_KO_NM "법인명",
+    KYC_CORP_EXAM_LIST.CUST_EN_NM "법인 영문명",
+    KYC_CUST_BASE.CUST_ID "CID",
+    KYC_MEM_BASE.MEM_ID                         "MID",
+    AES_DECRYPT(KYC_CUST_BASE.RLNM_CERT_VAL)    "사업자등록번호",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_TYPE_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.CORP_TYPE_CD) "법인유형",
+    SM_CD_DTL.AML_DTL_CD_NM                     "업종",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'MKP_PTCP_STEP_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.MKP_PTCP_STEP_CD) "시장참여단계",
+    KYC_CORP_EXAM_LIST.CORP_ESTB_DT "설립일자",
+    AES_DECRYPT(KYC_CORP_EXAM_LIST.CUST_EMAIL)  "E-mail",
+    DM_SYS_NAT_BASE_1.NAT_KO_NM                 "설립국가",
+    AES_DECRYPT(KYC_CORP_EXAM_LIST.CUST_TEL_NO) "대표번호",
+    KYC_CORP_EXAM_LIST.ESTB_PUPS_CTNT "비영리단체 설립목적",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_BELSTD_TYPE_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.CORP_BELSTD_TYPE_CD) "상장여부",
+    DM_SYS_NAT_BASE_1.LEN2_ABBR_NAT_CD          custNtnltCdLen2,
+    DM_SYS_NAT_BASE_2.NAT_KO_NM                 "본점소재지국가",
+    KYC_CORP_EXAM_LIST.CUST_ZIPCD "본점소재지우편번호",
+    KYC_CORP_EXAM_LIST.CUST_ADDR "본점소재지주소",
+    KYC_CORP_EXAM_LIST.CUST_DTL_ADDR "본점소재지상세주소",
+    KYC_CORP_EXAM_LIST.POBS_PST_NAT_CD,
+    DM_SYS_NAT_BASE_3.NAT_KO_NM                  "사업장소재지국가",
+    KYC_CORP_EXAM_LIST.POBS_ZIPCD  "사업장소재지우편번호",
+    KYC_CORP_EXAM_LIST.POBS_ADDR  "사업장소재지주소",
+    KYC_CORP_EXAM_LIST.POBS_DTL_ADDR  "사업장소재지상세주소",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_TRAN_PUPS_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.TRAN_PUPS_CD) "거래목적",
+    KYC_CORP_EXAM_LIST.TRAN_PUPS_DTL_CTNT "거래목적 기타-기재",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_PRMY_INCM_SURC_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.PRMY_INCM_SURC_CD) "주요소득의 원천",
+    KYC_CORP_EXAM_LIST.PRMY_INCM_SURC_CTNT "주요소득의 원천 기타-기재",
+    KYC_CORP_EXAM_LIST.DMST_DCL_TGT_VASP_YN "국내 신고 대상 가상자산사업자 여부",
+    KYC_CORP_EXAM_LIST.VASP_ACTRPT_REG_NO,
+    KYC_CORP_EXAM_LIST.VASP_ACTRPT_ISSUE_DTM,
+    KYC_CORP_EXAM_LIST.VASP_ACTRPT_EXPR_DTM,
+    KYC_CORP_EXAM_LIST.ISMS_CERT_NO,
+    KYC_CORP_EXAM_LIST.ISMS_ISSUE_DTM,
+    KYC_CORP_EXAM_LIST.ISMS_EXPR_DTM,
+    KYC_NCUS_RELPR_BASE.RELPR_KO_NM "대리인명",
+    KYC_NCUS_RELPR_BASE.RELPR_EN_NM "대리인영문명",
+    KYC_CORP_RELPR_BASE.RELPR_ID "대리인고객ID",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'REAL_OWNR_IDEN_EXM_TGT_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.REAL_OWNR_IDEN_EXM_TGT_CD) "실제소유자식별 면제대상",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'REAL_OWNR_IDEN_EXM_TGT_TYPE_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.REAL_OWNR_IDEN_EXM_TGT_TYPE_CD) "면제 대상 구분",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'REAL_OWNR_IDEN_STEP_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.REAL_OWNR_IDEN_STEP_CD) "실제소유자 식별 단계",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_MM_AVG_SALES_RNGE_AMT_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.MM_AVG_SALES_RNGE_AMT_CD) "월 평균 매출액",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_DLNG_TRAN_FNDS_SURC_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.DLNG_TRAN_FNDS_SURC_CD) "매매거래의자금의원천상세",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_TOT_AST_SCL_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.TOT_AST_SCL_CD) "총 자산의 규모",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_MM_AVG_EXPT_TRAN_CNT_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.MM_AVG_EXPT_TRAN_CNT_CD) "월 평균 예상 거래 횟수",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'MM_AVG_EXPT_IO_TRAN_SCL_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.MM_AVG_EXPT_IO_TRAN_SCL_CD) "월 평균 예상 거래 규모(입출금)",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'MM_AVG_EXPT_AST_TRAN_SCL_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.MM_AVG_EXPT_AST_TRAN_SCL_CD) "월평균 예상 거래 규모(가상자산)",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_INCM_PTTN_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.INCM_PTTN_1_CD) "소득유형1",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_INCM_PTTN_RNGE_AMT_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.INCM_PTTN_1_RNGE_AMT_CD) "소득유형1소득구간",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_INCM_PTTN_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.INCM_PTTN_2_CD) "소득유형2",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_INCM_PTTN_RNGE_AMT_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.INCM_PTTN_2_RNGE_AMT_CD) "소득유형2소득구간"
+from BTCAMLDB_OWN.KYC_CUST_BASE KYC_CUST_BASE
+         inner join BTCAMLDB_OWN.KYC_MEM_BASE KYC_MEM_BASE
+                    on KYC_CUST_BASE.CUST_ID = KYC_MEM_BASE.CUST_ID
+         left join (select /*+ no_merge push_pred index_desc(KYC_CORP_EXAM_LIST IDX_KYC_CORP_EXAM_LIST_02) */
+                        KYC_CORP_EXAM_LIST.*,
+                        row_number() over (partition by KYC_CORP_EXAM_LIST.CUST_ID order by KYC_CORP_EXAM_LIST.KYC_EXAM_STRT_DTM desc) RN
+                    from BTCAMLDB_OWN.KYC_CORP_EXAM_LIST KYC_CORP_EXAM_LIST
+                    where KYC_CORP_EXAM_LIST.KYC_EXE_MEM_ID = 'A10441129A'
+                      and KYC_CORP_EXAM_LIST.KYC_EXAM_STRT_DTM = '2025-08-20 15:54:43.624547') KYC_CORP_EXAM_LIST
+                   on KYC_CORP_EXAM_LIST.KYC_EXE_MEM_ID = KYC_MEM_BASE.MEM_ID and KYC_CORP_EXAM_LIST.RN = 1
+         left join BTCAMLDB_OWN.RA_CUST_RKAT_GRD_LIST RA_CUST_RKAT_GRD_LIST
+                   on KYC_CORP_EXAM_LIST.CUST_ID = RA_CUST_RKAT_GRD_LIST.CUST_ID and
+                      KYC_CORP_EXAM_LIST.RKAT_DTM = RA_CUST_RKAT_GRD_LIST.RKAT_DTM
+         left join BTCAMLDB_OWN.SM_USER_BASE SM_USER_BASE_1
+                   on KYC_CORP_EXAM_LIST.PAP_RVIW_TAPN_ID = SM_USER_BASE_1.AML_USER_ID
+         left join BTCAMLDB_OWN.SM_USER_BASE SM_USER_BASE_2
+                   on KYC_CORP_EXAM_LIST.KYC_RVIW_TAPN_ID = SM_USER_BASE_2.AML_USER_ID
+         left join BTCAMLDB_OWN.SM_USER_BASE SM_USER_BASE_3
+                   on KYC_CORP_EXAM_LIST.EXAM_RSLT_APRV_MAN_ID = SM_USER_BASE_3.AML_USER_ID
+         left join BTCAMLDB_OWN.KYC_CORP_RELPR_BASE KYC_CORP_RELPR_BASE
+                   on KYC_CORP_EXAM_LIST.CUST_ID = KYC_CORP_RELPR_BASE.CUST_ID and
+                      KYC_CORP_EXAM_LIST.KYC_EXAM_STRT_DTM = KYC_CORP_RELPR_BASE.KYC_EXAM_STRT_DTM and
+                      KYC_CORP_RELPR_BASE.RELPR_TYPE_CD = '003' and KYC_CORP_RELPR_BASE.DEL_YN = 'N'
+         left join BTCAMLDB_OWN.KYC_NCUS_RELPR_BASE KYC_NCUS_RELPR_BASE
+                   on KYC_CORP_EXAM_LIST.CUST_ID = KYC_NCUS_RELPR_BASE.CUST_ID and
+                      KYC_CORP_EXAM_LIST.KYC_EXAM_STRT_DTM = KYC_NCUS_RELPR_BASE.KYC_EXAM_STRT_DTM and
+                      KYC_NCUS_RELPR_BASE.RELPR_TYPE_CD = '003' and
+                      KYC_NCUS_RELPR_BASE.RELPR_SEQ = KYC_CORP_RELPR_BASE.RELPR_SEQ
+         left join BTCAMLDB_OWN.DM_SYS_NAT_BASE DM_SYS_NAT_BASE_1
+                   on KYC_CORP_EXAM_LIST.CUST_NTNLT_CD = DM_SYS_NAT_BASE_1.LEN3_ABBR_NAT_CD
+         left join BTCAMLDB_OWN.DM_SYS_NAT_BASE DM_SYS_NAT_BASE_2
+                   on KYC_CORP_EXAM_LIST.CUST_LIVE_NAT_CD = DM_SYS_NAT_BASE_2.LEN3_ABBR_NAT_CD
+         left join BTCAMLDB_OWN.DM_SYS_NAT_BASE DM_SYS_NAT_BASE_3
+                   on KYC_CORP_EXAM_LIST.POBS_PST_NAT_CD = DM_SYS_NAT_BASE_3.LEN3_ABBR_NAT_CD
+         left join BTCAMLDB_OWN.SM_CD_DTL SM_CD_DTL
+                   on KYC_CORP_EXAM_LIST.BZTYP_TYPE_CD = SM_CD_DTL.AML_DTL_CD and
+                      SM_CD_DTL.AML_COMN_CD = 'BZTYP_TYPE_CD'
+where KYC_CUST_BASE.CUST_ID = 10818764
+  and KYC_MEM_BASE.MEM_ID = 'A10441129A'
+;
+
+
+
+ 법인 정보 조회
+select c1_0.cust_ko_nm                                                                                      "법인명",
+       ((c1_0.cust_addr || ' ') || c1_0.cust_dtl_addr)                                                      "사업장주소",
+       c1_0.corp_reg_no                                                                                     "사업장등록번호",
+       case when (c1_0.corp_belstd_type_cd = '01') then cast('상장' as varchar2(4000 char)) else '비상장' end as "상장여부",
+       c1_0.corp_estb_dt                                                                                    "설립일자",
+       (SELECT AML_DTL_CD_NM
+        FROM SM_CD_DTL
+        WHERE AML_COMN_CD = 'MM_AVG_SALES_RNGE_AMT_CD'
+          and AML_DTL_CD = c1_0.mm_avg_sales_rnge_amt_cd)                                                   "월 매출액",
+       b1_0.aml_bztyp_type_cd_ctnt                                                                          "업종 구분",
+       (SELECT AML_DTL_CD_NM
+        FROM SM_CD_DTL
+        WHERE AML_COMN_CD = 'CORP_PRMY_INCM_SURC_CD'
+          and AML_DTL_CD = c1_0.prmy_incm_surc_cd)                                                          "자금의 원천",
+       (SELECT AML_DTL_CD_NM
+        FROM SM_CD_DTL
+        WHERE AML_COMN_CD = 'CORP_TRAN_PUPS_CD'
+          and AML_DTL_CD = c1_0.tran_pups_cd)                                                               "거래목적",
+       case
+           when c1_0.AML_RSLT_CD = '200' then 'WLF 검토대기'
+           when c1_0.AML_RSLT_CD = '400' then '거래거절'
+           when c1_0.AML_RSLT_CD = '600' then 'CDD'
+           when c1_0.AML_RSLT_CD = '700' then 'EDD'
+           when c1_0.AML_RSLT_CD = '800' then 'EEDD'
+           end                                                                                           as "위험 등급"
+from btcamldb_own.kyc_cust_base c1_0
+         left join btcamldb_own.kyc_job_base j1_0 on c1_0.job_cd = j1_0.aml_job_cd
+         left join btcamldb_own.kyc_bztyp_base b1_0 on c1_0.bztyp_type_cd = b1_0.aml_bztyp_type_cd
+where c1_0.cust_id = :cust_id
+;법인조회
+
+select
+    KYC_CORP_EXAM_LIST.CUST_KO_NM "법인명",
+    KYC_CORP_EXAM_LIST.CUST_EN_NM "법인 영문명",
+    KYC_CUST_BASE.CUST_ID "CID",
+    KYC_MEM_BASE.MEM_ID                         "MID",
+    AES_DECRYPT(KYC_CUST_BASE.RLNM_CERT_VAL)    "사업자등록번호",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_TYPE_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.CORP_TYPE_CD) "법인유형",
+    SM_CD_DTL.AML_DTL_CD_NM                     "업종",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'MKP_PTCP_STEP_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.MKP_PTCP_STEP_CD) "시장참여단계",
+    KYC_CORP_EXAM_LIST.CORP_ESTB_DT "설립일자",
+    AES_DECRYPT(KYC_CORP_EXAM_LIST.CUST_EMAIL)  "E-mail",
+    DM_SYS_NAT_BASE_1.NAT_KO_NM                 "설립국가",
+    AES_DECRYPT(KYC_CORP_EXAM_LIST.CUST_TEL_NO) "대표번호",
+    KYC_CORP_EXAM_LIST.ESTB_PUPS_CTNT "비영리단체 설립목적",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_BELSTD_TYPE_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.CORP_BELSTD_TYPE_CD) "상장여부",
+    DM_SYS_NAT_BASE_1.LEN2_ABBR_NAT_CD          custNtnltCdLen2,
+    DM_SYS_NAT_BASE_2.NAT_KO_NM                 "본점소재지국가",
+    KYC_CORP_EXAM_LIST.CUST_ZIPCD "본점소재지우편번호",
+    KYC_CORP_EXAM_LIST.CUST_ADDR "본점소재지주소",
+    KYC_CORP_EXAM_LIST.CUST_DTL_ADDR "본점소재지상세주소",
+    KYC_CORP_EXAM_LIST.POBS_PST_NAT_CD,
+    DM_SYS_NAT_BASE_3.NAT_KO_NM                  "사업장소재지국가",
+    KYC_CORP_EXAM_LIST.POBS_ZIPCD  "사업장소재지우편번호",
+    KYC_CORP_EXAM_LIST.POBS_ADDR  "사업장소재지주소",
+    KYC_CORP_EXAM_LIST.POBS_DTL_ADDR  "사업장소재지상세주소",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_TRAN_PUPS_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.TRAN_PUPS_CD) "거래목적",
+    KYC_CORP_EXAM_LIST.TRAN_PUPS_DTL_CTNT "거래목적 기타-기재",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_PRMY_INCM_SURC_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.PRMY_INCM_SURC_CD) "주요소득의 원천",
+    KYC_CORP_EXAM_LIST.PRMY_INCM_SURC_CTNT "주요소득의 원천 기타-기재",
+    KYC_CORP_EXAM_LIST.DMST_DCL_TGT_VASP_YN "국내 신고 대상 가상자산사업자 여부",
+    KYC_CORP_EXAM_LIST.VASP_ACTRPT_REG_NO,
+    KYC_CORP_EXAM_LIST.VASP_ACTRPT_ISSUE_DTM,
+    KYC_CORP_EXAM_LIST.VASP_ACTRPT_EXPR_DTM,
+    KYC_CORP_EXAM_LIST.ISMS_CERT_NO,
+    KYC_CORP_EXAM_LIST.ISMS_ISSUE_DTM,
+    KYC_CORP_EXAM_LIST.ISMS_EXPR_DTM,
+    KYC_NCUS_RELPR_BASE.RELPR_KO_NM "대리인명",
+    KYC_NCUS_RELPR_BASE.RELPR_EN_NM "대리인영문명",
+    KYC_CORP_RELPR_BASE.RELPR_ID "대리인고객ID",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'REAL_OWNR_IDEN_EXM_TGT_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.REAL_OWNR_IDEN_EXM_TGT_CD) "실제소유자식별 면제대상",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'REAL_OWNR_IDEN_EXM_TGT_TYPE_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.REAL_OWNR_IDEN_EXM_TGT_TYPE_CD) "면제 대상 구분",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'REAL_OWNR_IDEN_STEP_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.REAL_OWNR_IDEN_STEP_CD) "실제소유자 식별 단계",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_MM_AVG_SALES_RNGE_AMT_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.MM_AVG_SALES_RNGE_AMT_CD) "월 평균 매출액",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_DLNG_TRAN_FNDS_SURC_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.DLNG_TRAN_FNDS_SURC_CD) "매매거래의자금의원천상세",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_TOT_AST_SCL_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.TOT_AST_SCL_CD) "총 자산의 규모",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_MM_AVG_EXPT_TRAN_CNT_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.MM_AVG_EXPT_TRAN_CNT_CD) "월 평균 예상 거래 횟수",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'MM_AVG_EXPT_IO_TRAN_SCL_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.MM_AVG_EXPT_IO_TRAN_SCL_CD) "월 평균 예상 거래 규모(입출금)",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'MM_AVG_EXPT_AST_TRAN_SCL_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.MM_AVG_EXPT_AST_TRAN_SCL_CD) "월평균 예상 거래 규모(가상자산)",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_INCM_PTTN_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.INCM_PTTN_1_CD) "소득유형1",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_INCM_PTTN_RNGE_AMT_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.INCM_PTTN_1_RNGE_AMT_CD) "소득유형1소득구간",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_INCM_PTTN_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.INCM_PTTN_2_CD) "소득유형2",
+    (select AML_DTL_CD_NM from SM_CD_DTL where AML_COMN_CD = 'CORP_INCM_PTTN_RNGE_AMT_CD' and AML_DTL_CD = KYC_CORP_EXAM_LIST.INCM_PTTN_2_RNGE_AMT_CD) "소득유형2소득구간"
+from BTCAMLDB_OWN.KYC_CUST_BASE KYC_CUST_BASE
+         inner join BTCAMLDB_OWN.KYC_MEM_BASE KYC_MEM_BASE
+                    on KYC_CUST_BASE.CUST_ID = KYC_MEM_BASE.CUST_ID
+         left join (select /*+ no_merge push_pred index_desc(KYC_CORP_EXAM_LIST IDX_KYC_CORP_EXAM_LIST_02) */
+                        KYC_CORP_EXAM_LIST.*,
+                        row_number() over (partition by KYC_CORP_EXAM_LIST.CUST_ID order by KYC_CORP_EXAM_LIST.KYC_EXAM_STRT_DTM desc) RN
+                    from BTCAMLDB_OWN.KYC_CORP_EXAM_LIST KYC_CORP_EXAM_LIST
+                    where KYC_CORP_EXAM_LIST.KYC_EXE_MEM_ID = 'A10441129A'
+                      and KYC_CORP_EXAM_LIST.KYC_EXAM_STRT_DTM = '2025-08-20 15:54:43.624547') KYC_CORP_EXAM_LIST
+                   on KYC_CORP_EXAM_LIST.KYC_EXE_MEM_ID = KYC_MEM_BASE.MEM_ID and KYC_CORP_EXAM_LIST.RN = 1
+         left join BTCAMLDB_OWN.RA_CUST_RKAT_GRD_LIST RA_CUST_RKAT_GRD_LIST
+                   on KYC_CORP_EXAM_LIST.CUST_ID = RA_CUST_RKAT_GRD_LIST.CUST_ID and
+                      KYC_CORP_EXAM_LIST.RKAT_DTM = RA_CUST_RKAT_GRD_LIST.RKAT_DTM
+         left join BTCAMLDB_OWN.SM_USER_BASE SM_USER_BASE_1
+                   on KYC_CORP_EXAM_LIST.PAP_RVIW_TAPN_ID = SM_USER_BASE_1.AML_USER_ID
+         left join BTCAMLDB_OWN.SM_USER_BASE SM_USER_BASE_2
+                   on KYC_CORP_EXAM_LIST.KYC_RVIW_TAPN_ID = SM_USER_BASE_2.AML_USER_ID
+         left join BTCAMLDB_OWN.SM_USER_BASE SM_USER_BASE_3
+                   on KYC_CORP_EXAM_LIST.EXAM_RSLT_APRV_MAN_ID = SM_USER_BASE_3.AML_USER_ID
+         left join BTCAMLDB_OWN.KYC_CORP_RELPR_BASE KYC_CORP_RELPR_BASE
+                   on KYC_CORP_EXAM_LIST.CUST_ID = KYC_CORP_RELPR_BASE.CUST_ID and
+                      KYC_CORP_EXAM_LIST.KYC_EXAM_STRT_DTM = KYC_CORP_RELPR_BASE.KYC_EXAM_STRT_DTM and
+                      KYC_CORP_RELPR_BASE.RELPR_TYPE_CD = '003' and KYC_CORP_RELPR_BASE.DEL_YN = 'N'
+         left join BTCAMLDB_OWN.KYC_NCUS_RELPR_BASE KYC_NCUS_RELPR_BASE
+                   on KYC_CORP_EXAM_LIST.CUST_ID = KYC_NCUS_RELPR_BASE.CUST_ID and
+                      KYC_CORP_EXAM_LIST.KYC_EXAM_STRT_DTM = KYC_NCUS_RELPR_BASE.KYC_EXAM_STRT_DTM and
+                      KYC_NCUS_RELPR_BASE.RELPR_TYPE_CD = '003' and
+                      KYC_NCUS_RELPR_BASE.RELPR_SEQ = KYC_CORP_RELPR_BASE.RELPR_SEQ
+         left join BTCAMLDB_OWN.DM_SYS_NAT_BASE DM_SYS_NAT_BASE_1
+                   on KYC_CORP_EXAM_LIST.CUST_NTNLT_CD = DM_SYS_NAT_BASE_1.LEN3_ABBR_NAT_CD
+         left join BTCAMLDB_OWN.DM_SYS_NAT_BASE DM_SYS_NAT_BASE_2
+                   on KYC_CORP_EXAM_LIST.CUST_LIVE_NAT_CD = DM_SYS_NAT_BASE_2.LEN3_ABBR_NAT_CD
+         left join BTCAMLDB_OWN.DM_SYS_NAT_BASE DM_SYS_NAT_BASE_3
+                   on KYC_CORP_EXAM_LIST.POBS_PST_NAT_CD = DM_SYS_NAT_BASE_3.LEN3_ABBR_NAT_CD
+         left join BTCAMLDB_OWN.SM_CD_DTL SM_CD_DTL
+                   on KYC_CORP_EXAM_LIST.BZTYP_TYPE_CD = SM_CD_DTL.AML_DTL_CD and
+                      SM_CD_DTL.AML_COMN_CD = 'BZTYP_TYPE_CD'
+where KYC_CUST_BASE.CUST_ID = 10818764
+  and KYC_MEM_BASE.MEM_ID = 'A10441129A'
+;
