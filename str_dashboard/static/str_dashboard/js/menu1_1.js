@@ -241,9 +241,11 @@
                         const custTypeIdx = personData.columns.indexOf('고객구분');
                         if (custTypeIdx >= 0) {
                             const custType = personData.rows[0][custTypeIdx];
+                            console.log(`Customer type detected: ${custType}`);
                             // 고객 상세 정보도 조회
                             await this.fetchPersonDetailInfo(custId, custType);
                         } else {
+                            console.log('Customer type not found, using default: 개인');
                             // 고객구분이 없으면 기본값으로 조회
                             await this.fetchPersonDetailInfo(custId, '개인');
                         }
@@ -277,20 +279,29 @@
                 });
                 
                 const detailData = await response.json();
+                console.log(`Detail query response - success: ${detailData.success}, rows: ${detailData.rows ? detailData.rows.length : 0}`);
+                
                 if (detailData.success) {
                     window.renderPersonDetailSection(detailData.columns || [], detailData.rows || []);
                     
-                    // 법인인 경우 관련인 정보도 조회
-                    if (custType === '법인') {
+                    // 법인인 경우 관련인 정보 조회
+                    if (actualCustType === '법인') {
+                        console.log('Fetching corp related persons...');
                         await this.fetchCorpRelatedPersons(custId);
                     }
-                    // 개인인 경우에만 중복 회원 검색
-                    else if (custType === '개인' && detailData.rows && detailData.rows.length > 0) {
-                        await this.fetchDuplicatePersons(custId, detailData.columns, detailData.rows[0]);
+                    
+                    // 개인/법인 구분 없이 중복 회원 검색 (데이터가 있는 경우만)
+                    if (detailData.rows && detailData.rows.length > 0) {
+                        console.log(`Fetching duplicate persons for ${actualCustType}...`);
+                        await this.fetchDuplicatePersons(custId, detailData.columns, detailData.rows[0], actualCustType);
                     }
                 } else {
                     console.error('Person detail query failed:', detailData.message);
                     window.renderPersonDetailSection([], []);
+                    // 실패해도 법인인 경우 관련인 정보는 시도
+                    if (actualCustType === '법인') {
+                        await this.fetchCorpRelatedPersons(custId);
+                    }
                 }
             } catch (error) {
                 console.error('Person detail info fetch failed:', error);
@@ -326,20 +337,53 @@
             }
         }
 
-        // menu1_1.js의 fetchDuplicatePersons 메서드 수정 부분
-
-        async fetchDuplicatePersons(custId, columns, row) {
+        async fetchDuplicatePersons(custId, columns, row, custType) {
+            console.log(`Starting duplicate search for ${custType} customer...`);
+            
             // 컬럼 인덱스 찾기
-            const emailIdx = columns.indexOf('E-mail');
-            const phoneIdx = columns.indexOf('휴대폰 번호');
-            const addressIdx = columns.indexOf('거주주소');
-            const detailAddressIdx = columns.indexOf('거주상세주소');
-            const workplaceNameIdx = columns.indexOf('직장명');
-            const workplaceAddressIdx = columns.indexOf('직장주소');
-            const workplaceDetailAddressIdx = columns.indexOf('직장상세주소');
+            let emailIdx, phoneIdx, addressIdx, detailAddressIdx;
+            let workplaceNameIdx, workplaceAddressIdx, workplaceDetailAddressIdx;
+            
+            if (custType === '법인') {
+                // 법인의 경우 매핑
+                emailIdx = columns.indexOf('E-mail');  // 대표자 이메일
+                phoneIdx = columns.indexOf('대표번호');  // 대표번호
+                
+                // 법인의 본점소재지 주소 사용
+                addressIdx = columns.indexOf('본점소재지주소');
+                detailAddressIdx = columns.indexOf('본점소재지상세주소');
+                
+                // 직장명은 법인명, 직장주소는 본점소재지
+                workplaceNameIdx = columns.indexOf('법인명');
+                workplaceAddressIdx = columns.indexOf('본점소재지주소');
+                workplaceDetailAddressIdx = columns.indexOf('본점소재지상세주소');
+                
+                console.log('Corp column indices:', {
+                    email: emailIdx,
+                    phone: phoneIdx,
+                    address: addressIdx,
+                    corpName: workplaceNameIdx
+                });
+            } else {
+                // 개인의 경우 기존 매핑
+                emailIdx = columns.indexOf('E-mail');
+                phoneIdx = columns.indexOf('휴대폰 번호');
+                addressIdx = columns.indexOf('거주주소');
+                detailAddressIdx = columns.indexOf('거주상세주소');
+                workplaceNameIdx = columns.indexOf('직장명');
+                workplaceAddressIdx = columns.indexOf('직장주소');
+                workplaceDetailAddressIdx = columns.indexOf('직장상세주소');
+                
+                console.log('Personal column indices:', {
+                    email: emailIdx,
+                    phone: phoneIdx,
+                    address: addressIdx,
+                    workplace: workplaceNameIdx
+                });
+            }
             
             // 값 추출
-            let fullEmail = '';  // 변경: emailPrefix → fullEmail
+            let fullEmail = '';
             let phoneSuffix = '';
             let address = '';
             let detailAddress = '';
@@ -347,32 +391,41 @@
             let workplaceAddress = '';
             let workplaceDetailAddress = '';
             
-            // 이메일 전체 값 사용 (변경됨)
+            // 이메일
             if (emailIdx >= 0 && row[emailIdx]) {
-                fullEmail = row[emailIdx];  // 복호화된 전체 이메일 값 그대로 사용
+                fullEmail = row[emailIdx];
+                console.log('Email found:', fullEmail.substring(0, fullEmail.indexOf('@')) + '@...');
             }
             
+            // 전화번호 뒷자리
             if (phoneIdx >= 0 && row[phoneIdx]) {
                 const phone = String(row[phoneIdx]);
                 if (phone.length >= 4) {
                     phoneSuffix = phone.slice(-4);
+                    console.log('Phone suffix:', phoneSuffix);
                 }
             }
             
+            // 주소
             if (addressIdx >= 0) {
                 address = row[addressIdx] || '';
+                if (address) console.log('Address found');
             }
             
             if (detailAddressIdx >= 0) {
                 detailAddress = row[detailAddressIdx] || '';
             }
             
+            // 직장명
             if (workplaceNameIdx >= 0) {
                 workplaceName = row[workplaceNameIdx] || '';
+                if (workplaceName) console.log('Workplace name found:', workplaceName);
             }
             
+            // 직장주소
             if (workplaceAddressIdx >= 0) {
                 workplaceAddress = row[workplaceAddressIdx] || '';
+                if (workplaceAddress) console.log('Workplace address found');
             }
             
             if (workplaceDetailAddressIdx >= 0) {
@@ -381,6 +434,7 @@
             
             // 조회할 조건이 하나도 없으면 빈 결과 반환
             if (!fullEmail && !address && !workplaceName && !workplaceAddress) {
+                console.log('No search criteria found, skipping duplicate search');
                 window.renderDuplicatePersonsSection([], [], {});
                 return;
             }
@@ -392,7 +446,8 @@
                 console.log('Search criteria:', {
                     email: fullEmail ? 'yes' : 'no',
                     address: address ? 'yes' : 'no',
-                    workplace: workplaceName || workplaceAddress ? 'yes' : 'no'
+                    workplace: workplaceName || workplaceAddress ? 'yes' : 'no',
+                    phone_suffix: phoneSuffix || 'none'
                 });
                 
                 const response = await fetch(window.URLS.query_duplicate_unified, {
@@ -403,7 +458,7 @@
                     },
                     body: new URLSearchParams({
                         current_cust_id: String(custId),
-                        full_email: fullEmail,  // 변경: email_prefix → full_email
+                        full_email: fullEmail,
                         phone_suffix: phoneSuffix,
                         address: address,
                         detail_address: detailAddress,
@@ -416,6 +471,7 @@
                 const result = await response.json();
                 const endTime = performance.now();
                 console.log(`Duplicate search completed in ${(endTime - startTime).toFixed(2)}ms`);
+                console.log(`Found ${result.rows ? result.rows.length : 0} duplicate records`);
                 
                 if (result.success) {
                     // MATCH_TYPES 컬럼 처리
@@ -439,7 +495,8 @@
                         detail_address: detailAddress || null,
                         workplace_name: workplaceName || null,
                         workplace_address: workplaceAddress || null,
-                        workplace_detail_address: workplaceDetailAddress || null
+                        workplace_detail_address: workplaceDetailAddress || null,
+                        customer_type: custType  // 고객 유형 추가
                     };
                     
                     window.renderDuplicatePersonsSection(columns, rows, matchCriteria);

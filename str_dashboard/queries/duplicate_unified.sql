@@ -1,30 +1,14 @@
 -- duplicate_unified.sql
 -- 모든 중복 조건을 UNION ALL로 한 번에 처리
+-- 이메일 매칭은 암호화 함수 문제로 제외
 WITH DUPLICATE_CANDIDATES AS (
-    -- 이메일 매칭
-    SELECT CUST_ID, 'EMAIL' AS MATCH_TYPE
-    FROM BTCAMLDB_OWN.KYC_CUST_BASE
-    WHERE CUST_ID != :current_cust_id
-
-
-
--- duplicate_unified.sql
--- 이메일을 암호화하여 비교
-WITH DUPLICATE_CANDIDATES AS (
-    -- 이메일 매칭 (전체 이메일을 암호화하여 비교)
-    SELECT CUST_ID, 'EMAIL' AS MATCH_TYPE
-    FROM BTCAMLDB_OWN.KYC_CUST_BASE
-    WHERE CUST_ID != :current_cust_id
-      AND :full_email IS NOT NULL
-      AND CUST_EMAIL = AES_ENCRYPT(:full_email)  -- 평문을 암호화하여 비교
-
-      -- * 추후 사용을 위해 남겨둠
-      --AND :email_prefix IS NOT NULL
-      --AND SUBSTR(AES_DECRYPT(CUST_EMAIL), 1, INSTR(AES_DECRYPT(CUST_EMAIL), '@') - 1) = :email_prefix
-
-
-
-    UNION ALL
+    -- 이메일 매칭 (암호화 함수 문제로 주석 처리)
+    -- SELECT CUST_ID, 'EMAIL' AS MATCH_TYPE
+    -- FROM BTCAMLDB_OWN.KYC_CUST_BASE
+    -- WHERE CUST_ID != :current_cust_id
+    --   AND :encrypted_email IS NOT NULL
+    --   AND CUST_EMAIL = :encrypted_email
+    -- UNION ALL
     
     -- 주소 매칭
     SELECT CUST_ID, 'ADDRESS' AS MATCH_TYPE
@@ -64,6 +48,7 @@ UNIQUE_CANDIDATES AS (
     GROUP BY CUST_ID
 )
 SELECT 
+    UC.MATCH_TYPES "MATCH_TYPES",  -- 가장 왼쪽으로 이동
     KB.CUST_ID "고객ID",
     KB.KYC_EXE_MEM_ID "MID",
     KB.CUST_KO_NM "성명",
@@ -82,8 +67,7 @@ SELECT
     KB.WPLC_ADDR "직장주소",
     KB.WPLC_DTL_ADDR "직장상세주소",
     JB.JOB_LV_1_NM "직업/업종",
-    JB.JOB_LV_2_NM "직업/업종상세",
-    UC.MATCH_TYPES "MATCH_TYPES"
+    JB.JOB_LV_2_NM "직업/업종상세"
 FROM UNIQUE_CANDIDATES UC
 INNER JOIN BTCAMLDB_OWN.KYC_CUST_BASE KB ON UC.CUST_ID = KB.CUST_ID
 LEFT JOIN BTCAMLDB_OWN.KYC_JOB_BASE JB ON KB.JOB_CD = JB.AML_JOB_CD
@@ -92,4 +76,4 @@ LEFT JOIN BTCAMLDB_OWN.DM_SYS_NAT_BASE N2 ON KB.CUST_LIVE_NAT_CD = N2.LEN3_ABBR_
 WHERE :phone_suffix IS NULL 
    OR SUBSTR(AES_DECRYPT(KB.CUST_TEL_NO), -4) = :phone_suffix
 ORDER BY KB.CUST_ID
-FETCH FIRST 50 ROWS ONLY;
+FETCH FIRST 50 ROWS ONLY

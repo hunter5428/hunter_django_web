@@ -36,7 +36,13 @@
     <div class="table-wrap" id="result_table_person_detail"></div>
 </div>
 
-<!-- 섹션: 동일_차명의심_상세 정보 (신규) -->
+<!-- 섹션: 법인 관련인 정보 (위치 이동) -->
+<div id="section_corp_related" class="section" style="display:none;">
+    <h3>법인 관련인 정보</h3>
+    <div class="table-wrap" id="result_table_corp_related"></div>
+</div>
+
+<!-- 섹션: 동일_차명의심_상세 정보 -->
 <div id="section_duplicate_persons" class="section" style="display:none;">
     <h3>동일_차명의심_상세 정보</h3>
     <div class="table-wrap" id="result_table_duplicate_persons"></div>
@@ -64,11 +70,6 @@
 <div id="section_rule_distinct" class="section" style="display:none;">
     <h3>발생한 RULE의 정보(DISTINCT)</h3>
     <div class="table-wrap" id="result_table_rule_distinct"></div>
-</div>
-
-<div id="section_corp_related" class="section" style="display:none;">
-    <h3>법인 관련인 정보</h3>
-    <div class="table-wrap" id="result_table_corp_related"></div>
 </div>
 
 <!-- DB 연결 모달 -->
@@ -110,8 +111,6 @@ window.URLS = {
     query_person_detail: "{% url 'query_person_detail_info' %}",
     rule_history: "{% url 'rule_history_search' %}",
     query_duplicate_unified: "{% url 'query_duplicate_unified' %}",
-
-
     query_corp_related_persons: "{% url 'query_corp_related_persons' %}"
 };
 </script>

@@ -239,6 +239,56 @@
     white-space: nowrap;
 }
 
+/* ==================== 동일_차명의심_상세 정보 테이블 스타일 ==================== */
+.duplicate-persons-table {
+    font-size: 13px;
+}
+
+.duplicate-persons-table th {
+    white-space: nowrap;
+    font-size: 12px;
+}
+
+.duplicate-persons-table td {
+    word-break: break-word;
+    vertical-align: top;
+}
+
+/* 매칭된 컬럼 강조 효과 */
+.duplicate-persons-table td.matched-column {
+    background: #383838 !important;
+    font-weight: 600;
+    position: relative;
+}
+
+.duplicate-persons-table tr:hover td.matched-column {
+    background: #424242 !important;
+}
+
+/* ==================== 법인 관련인 정보 테이블 스타일 ==================== */
+.corp-related-table {
+    font-size: 13px;
+}
+
+.corp-related-table th {
+    white-space: nowrap;
+    font-size: 12px;
+}
+
+.corp-related-table td {
+    word-break: break-word;
+    vertical-align: top;
+}
+
+/* 빈 테이블 메시지 개선 */
+.duplicate-persons-table .empty-row,
+.corp-related-table .empty-row {
+    padding: 24px;
+    text-align: center;
+    color: #888;
+    font-style: italic;
+}
+
 /* ==================== 정렬 가능 컬럼 ==================== */
 .table th.sortable {
     cursor: pointer;
@@ -271,6 +321,18 @@
     content: '↓';
     opacity: 1;
     color: #4fc3f7;
+}
+
+/* ==================== 매칭 정보 표시 ==================== */
+.match-info-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    margin-left: 4px;
+    background: #4fc3f7;
+    color: #000;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
 }
 
 /* ==================== 반응형 처리 ==================== */
@@ -327,36 +389,4 @@
     .section h3::after {
         display: none;
     }
-}
-
-/* 동일_차명의심_상세 정보 테이블 스타일 */
-.duplicate-persons-table th {
-    white-space: nowrap;
-}
-
-.duplicate-persons-table td {
-    word-break: break-word;
-}
-
-/* 매칭된 컬럼 강조 효과 */
-.duplicate-persons-table td.matched-column {
-    background: #383838 !important;
-    font-weight: 600;
-    position: relative;
-}
-
-.duplicate-persons-table tr:hover td.matched-column {
-    background: #424242 !important;
-}
-
-/* 매칭 정보 표시 */
-.match-info-badge {
-    display: inline-block;
-    padding: 2px 6px;
-    margin-left: 4px;
-    background: #4fc3f7;
-    color: #000;
-    border-radius: 4px;
-    font-size: 10px;
-    font-weight: 700;
 }

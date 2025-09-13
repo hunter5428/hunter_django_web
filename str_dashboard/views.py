@@ -182,6 +182,7 @@ def query_person_info(request, oracle_conn=None):
     return JsonResponse(result)
 
 
+# str_dashboard/views.py의 query_person_detail_info 함수 수정
 @login_required
 @require_POST
 @require_db_connection
@@ -196,7 +197,7 @@ def query_person_detail_info(request, oracle_conn=None):
     # 고객 유형에 따라 다른 SQL 파일 사용
     if cust_type == '법인':
         sql_filename = 'corp_detail_info.sql'
-        # corp_detail_info.sql은 :custId를 한 번만 사용
+        # corp_detail_info.sql은 :custId를 한 번만 사용 (최종 WHERE 절에서)
         bind_params = {':custId': '?'}
         query_params = [cust_id]
     else:
@@ -204,6 +205,8 @@ def query_person_detail_info(request, oracle_conn=None):
         # person_detail_info.sql도 :custId를 한 번만 사용
         bind_params = {':custId': '?'}
         query_params = [cust_id]
+    
+    logger.info(f"Querying {sql_filename} for cust_id: {cust_id}, type: {cust_type}")
     
     # 쿼리 실행
     result = execute_query_with_error_handling(
@@ -213,7 +216,16 @@ def query_person_detail_info(request, oracle_conn=None):
         query_params=query_params
     )
     
+    # 디버깅 정보 추가
+    if result.get('success'):
+        logger.info(f"Query successful - rows returned: {len(result.get('rows', []))}")
+        if result.get('rows'):
+            logger.debug(f"First row columns count: {len(result.get('rows')[0])}")
+    else:
+        logger.error(f"Query failed: {result.get('message')}")
+    
     return JsonResponse(result)
+
 
 
 @login_required
@@ -317,17 +329,16 @@ def clear_db_session(request):
     logger.info("Database session cleared")
 
 
-# views.py에 추가할 통합 중복 조회 함수
-
 @login_required
 @require_POST
 @require_db_connection
 def query_duplicate_unified(request, oracle_conn=None):
-    """통합 중복 회원 조회 - 전체 이메일 비교 버전"""
+    """통합 중복 회원 조회 - 이메일 제외 버전"""
     
     # 파라미터 추출
     current_cust_id = request.POST.get('current_cust_id', '').strip()
-    full_email = request.POST.get('full_email', '').strip() or None  # 변경: email_prefix → full_email
+    # full_email은 받지만 사용하지 않음 (향후 복구 가능성을 위해 유지)
+    full_email = request.POST.get('full_email', '').strip() or None
     phone_suffix = request.POST.get('phone_suffix', '').strip() or None
     address = request.POST.get('address', '').strip() or None
     detail_address = request.POST.get('detail_address', '').strip() or None
@@ -342,58 +353,78 @@ def query_duplicate_unified(request, oracle_conn=None):
             'rows': []
         })
     
-    # 이메일이 있으면 암호화 (person_detail_info.sql의 결과는 복호화된 상태)
-    # DB의 CUST_EMAIL은 암호화된 상태이므로 비교를 위해 암호화 필요
-    encrypted_email = None
-    if full_email:
-        # 주의: AES_ENCRYPT 함수를 Python에서 구현하거나
-        # 또는 SQL에서 AES_ENCRYPT(:full_email)로 처리
-        # 여기서는 SQL에서 처리하는 방식으로 가정
-        encrypted_email = full_email
+    # 파라미터 로깅 (이메일 제외)
+    logger.debug(f"Duplicate search params - cust_id: {current_cust_id}")
+    logger.debug(f"  phone: {phone_suffix}")
+    logger.debug(f"  address: {bool(address)}, workplace: {bool(workplace_name)}")
+    logger.info("Note: Email-based duplicate search is currently disabled")
     
-    # 통합 쿼리 실행
+    # SQL 쿼리의 바인드 변수 사용 순서 (duplicate_unified.sql 기준)
+    # 이메일 부분이 주석 처리되어 바인드 변수 개수 감소
+    # WITH 절 내부:
+    # 1. :current_cust_id (주소 섹션)
+    # 2. :address (IS NOT NULL)
+    # 3. :address (= 비교)
+    # 4. :detail_address
+    # 5. :current_cust_id (직장명 섹션)
+    # 6. :workplace_name (IS NOT NULL)
+    # 7. :workplace_name (= 비교)
+    # 8. :current_cust_id (직장주소 섹션)
+    # 9. :workplace_address (IS NOT NULL)
+    # 10. :workplace_address (= 비교)
+    # 11. :workplace_detail_address (IS NULL)
+    # 12. :workplace_detail_address (= 비교)
+    # WHERE 절:
+    # 13. :phone_suffix (IS NULL)
+    # 14. :phone_suffix (= 비교)
+    
+    # 통합 쿼리 실행 (이메일 파라미터 제외)
     result = execute_query_with_error_handling(
         oracle_conn=oracle_conn,
         sql_filename='duplicate_unified.sql',
         bind_params={
-            ':current_cust_id': '?',
-            ':full_email': '?',  # 변경: email_prefix → full_email
-            ':address': '?',
-            ':detail_address': '?',
-            ':workplace_name': '?',
-            ':workplace_address': '?',
-            ':workplace_detail_address': '?',
-            ':phone_suffix': '?'
+            ':current_cust_id': '?',           # 3번 사용 (이메일 제외로 4→3)
+            # ':encrypted_email': '?',         # 제거됨
+            ':address': '?',                    # 2번 사용
+            ':detail_address': '?',             # 1번 사용
+            ':workplace_name': '?',             # 2번 사용
+            ':workplace_address': '?',          # 2번 사용
+            ':workplace_detail_address': '?',   # 2번 사용
+            ':phone_suffix': '?'                # 2번 사용
         },
         query_params=[
-            # 이메일 조건 파라미터
-            current_cust_id,  # 1
-            encrypted_email,  # 2: :full_email IS NOT NULL
-            encrypted_email,  # 3: CUST_EMAIL = :full_email
+            # 이메일 조건 제거됨 (3개 삭제)
             
-            # 주소 조건 파라미터
-            current_cust_id,  # 4
-            address,          # 5
-            address,          # 6
-            detail_address,   # 7
+            # 주소 조건 (4개)
+            current_cust_id,
+            address,
+            address,
+            detail_address,
             
-            # 직장명 조건 파라미터
-            current_cust_id,  # 8
-            workplace_name,   # 9
-            workplace_name,   # 10
+            # 직장명 조건 (3개)
+            current_cust_id,
+            workplace_name,
+            workplace_name,
             
-            # 직장주소 조건 파라미터
-            current_cust_id,  # 11
-            workplace_address,  # 12
-            workplace_address,  # 13
-            workplace_detail_address,  # 14
-            workplace_detail_address,  # 15
+            # 직장주소 조건 (5개)
+            current_cust_id,
+            workplace_address,
+            workplace_address,
+            workplace_detail_address,
+            workplace_detail_address,
             
-            # 최종 필터 파라미터
-            phone_suffix,     # 16
-            phone_suffix      # 17
-        ]
+            # 전화번호 필터 (2개)
+            phone_suffix,
+            phone_suffix
+        ]  # 총 14개 (기존 17개에서 3개 감소)
     )
+    
+    if result.get('success'):
+        logger.info(f"Duplicate search successful - found {len(result.get('rows', []))} records")
+        if full_email:
+            logger.info("Note: Email was provided but not used in search due to encryption issues")
+    else:
+        logger.error(f"Duplicate search failed: {result.get('message')}")
     
     return JsonResponse(result)
 
@@ -420,136 +451,4 @@ def query_corp_related_persons(request, oracle_conn=None):
     return JsonResponse(result)
 
 
-@login_required
-@require_POST
-@require_db_connection
-def query_duplicate_by_email(request, oracle_conn=None):
-    """이메일 기준 중복 회원 조회"""
-    email_prefix = request.POST.get('email_prefix', '').strip()
-    phone_suffix = request.POST.get('phone_suffix', '').strip() or None
-    current_cust_id = request.POST.get('current_cust_id', '').strip()
-    
-    if not current_cust_id or not email_prefix:
-        return JsonResponse({
-            'success': True,
-            'columns': [],
-            'rows': []
-        })
-    
-    # :phone_suffix가 OR 조건에서 2번 사용됨
-    result = execute_query_with_error_handling(
-        oracle_conn=oracle_conn,
-        sql_filename='duplicate_by_email.sql',
-        bind_params={
-            ':current_cust_id': '?',
-            ':email_prefix': '?',
-            ':phone_suffix': '?'
-        },
-        query_params=[current_cust_id, email_prefix, phone_suffix, phone_suffix]
-    )
-    
-    return JsonResponse(result)
 
-
-@login_required
-@require_POST
-@require_db_connection
-def query_duplicate_by_address(request, oracle_conn=None):
-    """주소 기준 중복 회원 조회"""
-    address = request.POST.get('address', '').strip()
-    detail_address = request.POST.get('detail_address', '').strip()
-    phone_suffix = request.POST.get('phone_suffix', '').strip() or None
-    current_cust_id = request.POST.get('current_cust_id', '').strip()
-    
-    if not current_cust_id or not address:
-        return JsonResponse({
-            'success': True,
-            'columns': [],
-            'rows': []
-        })
-    
-    # :phone_suffix가 OR 조건에서 2번 사용됨
-    result = execute_query_with_error_handling(
-        oracle_conn=oracle_conn,
-        sql_filename='duplicate_by_address.sql',
-        bind_params={
-            ':current_cust_id': '?',
-            ':address': '?',
-            ':detail_address': '?',
-            ':phone_suffix': '?'
-        },
-        query_params=[current_cust_id, address, detail_address, phone_suffix, phone_suffix]
-    )
-    
-    return JsonResponse(result)
-
-
-@login_required
-@require_POST
-@require_db_connection
-def query_duplicate_by_workplace(request, oracle_conn=None):
-    """직장명 기준 중복 회원 조회"""
-    workplace_name = request.POST.get('workplace_name', '').strip()
-    phone_suffix = request.POST.get('phone_suffix', '').strip() or None
-    current_cust_id = request.POST.get('current_cust_id', '').strip()
-    
-    if not current_cust_id or not workplace_name:
-        return JsonResponse({
-            'success': True,
-            'columns': [],
-            'rows': []
-        })
-    
-    # :phone_suffix가 OR 조건에서 2번 사용됨
-    result = execute_query_with_error_handling(
-        oracle_conn=oracle_conn,
-        sql_filename='duplicate_by_workplace.sql',
-        bind_params={
-            ':current_cust_id': '?',
-            ':workplace_name': '?',
-            ':phone_suffix': '?'
-        },
-        query_params=[current_cust_id, workplace_name, phone_suffix, phone_suffix]
-    )
-    
-    return JsonResponse(result)
-
-
-@login_required
-@require_POST
-@require_db_connection
-def query_duplicate_by_workplace_address(request, oracle_conn=None):
-    """직장주소 기준 중복 회원 조회"""
-    workplace_address = request.POST.get('workplace_address', '').strip()
-    workplace_detail_address = request.POST.get('workplace_detail_address', '').strip() or None
-    phone_suffix = request.POST.get('phone_suffix', '').strip() or None
-    current_cust_id = request.POST.get('current_cust_id', '').strip()
-    
-    if not current_cust_id or not workplace_address:
-        return JsonResponse({
-            'success': True,
-            'columns': [],
-            'rows': []
-        })
-    
-    # :workplace_detail_address와 :phone_suffix가 각각 OR 조건에서 2번씩 사용됨
-    result = execute_query_with_error_handling(
-        oracle_conn=oracle_conn,
-        sql_filename='duplicate_by_workplace_address.sql',
-        bind_params={
-            ':current_cust_id': '?',
-            ':workplace_address': '?',
-            ':workplace_detail_address': '?',
-            ':phone_suffix': '?'
-        },
-        query_params=[
-            current_cust_id,
-            workplace_address,
-            workplace_detail_address,
-            workplace_detail_address,  # OR 조건에서 재사용
-            phone_suffix,
-            phone_suffix  # OR 조건에서 재사용
-        ]
-    )
-    
-    return JsonResponse(result)
