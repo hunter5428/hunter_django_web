@@ -61,13 +61,20 @@ SELECT
     AES_DECRYPT(KB.CUST_TEL_NO) "휴대폰 번호",
     N2.NAT_KO_NM "거주주소국가",
     KB.CUST_ZIPCD "거주주소우편번호",
-    KB.CUST_ADDR "거주주소",
-    KB.CUST_DTL_ADDR "거주상세주소",
+    CASE 
+        WHEN KB.CUST_DTL_ADDR IS NOT NULL 
+        THEN KB.CUST_ADDR || ' ' || KB.CUST_DTL_ADDR
+        ELSE KB.CUST_ADDR
+    END AS "거주주소",
     KB.WPLC_NM "직장명",
-    KB.WPLC_ADDR "직장주소",
-    KB.WPLC_DTL_ADDR "직장상세주소",
+    CASE 
+        WHEN KB.WPLC_DTL_ADDR IS NOT NULL 
+        THEN KB.WPLC_ADDR || ' ' || KB.WPLC_DTL_ADDR
+        ELSE KB.WPLC_ADDR
+    END AS "직장주소",
     JB.JOB_LV_1_NM "직업/업종",
     JB.JOB_LV_2_NM "직업/업종상세"
+    
 FROM UNIQUE_CANDIDATES UC
 INNER JOIN BTCAMLDB_OWN.KYC_CUST_BASE KB ON UC.CUST_ID = KB.CUST_ID
 LEFT JOIN BTCAMLDB_OWN.KYC_JOB_BASE JB ON KB.JOB_CD = JB.AML_JOB_CD

@@ -335,6 +335,104 @@
     font-weight: 700;
 }
 
+/* ==================== 동일_차명의심_상세 정보 스타일 ==================== */
+.duplicate-person-group {
+    margin-bottom: 20px;
+}
+
+.duplicate-person-header {
+    background: #222;
+    padding: 10px;
+    margin: 10px 0 5px 0;
+    border-radius: 8px;
+    font-weight: 600;
+    color: #eaeaea;
+}
+
+.duplicate-person-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.duplicate-field {
+    display: flex;
+    border-right: 1px solid #2a2a2a;
+    border-bottom: 1px solid #2a2a2a;
+}
+
+.duplicate-field:nth-child(4n) {
+    border-right: none;
+}
+
+.duplicate-field:nth-last-child(-n+4) {
+    border-bottom: none;
+}
+
+.duplicate-field-label {
+    background: #151515;
+    padding: 8px 10px;
+    min-width: 100px;
+    font-size: 12px;
+    color: #9a9a9a;
+    font-weight: 600;
+    border-right: 1px solid #2a2a2a;
+}
+
+.duplicate-field-value {
+    padding: 8px 10px;
+    flex: 1;
+    font-size: 13px;
+    color: #eaeaea;
+    background: #1a1a1a;
+}
+
+/* 매칭된 필드 강조 (회색 계열만 사용) */
+.duplicate-field.matched .duplicate-field-value {
+    background: #2a2a2a;
+    font-weight: 600;
+}
+
+.duplicate-field.matched:hover .duplicate-field-value {
+    background: #333;
+}
+
+/* 동일_차명의심 반응형 처리 */
+@media (max-width: 1400px) {
+    .duplicate-person-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    
+    .duplicate-field:nth-child(4n) {
+        border-right: 1px solid #2a2a2a;
+    }
+    
+    .duplicate-field:nth-child(3n) {
+        border-right: none;
+    }
+}
+
+@media (max-width: 1024px) {
+    .duplicate-person-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .duplicate-field:nth-child(3n),
+    .duplicate-field:nth-child(4n) {
+        border-right: 1px solid #2a2a2a;
+    }
+    
+    .duplicate-field:nth-child(2n) {
+        border-right: none;
+    }
+}
+
+
+
 /* ==================== 반응형 처리 ==================== */
 @media (max-width: 768px) {
     .table {

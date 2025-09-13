@@ -1,11 +1,12 @@
 -- customer_unified_info.sql
 -- 고객 기본 정보 + 상세 정보 통합 쿼리 (개인/법인 모두 포함)
+-- MID 정보 추가 (KYC_MEM_BASE 또는 KYC_CUST_BASE에서 가져옴)
 -- 바인드 변수: :custId (1번 사용)
 
 SELECT 
     -- ========== 기본 식별 정보 ==========
     c.CUST_ID AS "고객ID",
-    m.MEM_ID AS "MID",
+    COALESCE(m.MEM_ID, c.KYC_EXE_MEM_ID) AS "MID",
     COALESCE(ce.CUST_KO_NM, c.CUST_KO_NM) AS "성명",
     COALESCE(ce.CUST_EN_NM, c.CUST_EN_NM) AS "영문명",
     
@@ -37,9 +38,7 @@ SELECT
     COALESCE(AES_DECRYPT(ce.CUST_TEL_NO), AES_DECRYPT(c.CUST_TEL_NO)) AS "연락처",
     COALESCE(AES_DECRYPT(ce.CUST_EMAIL), AES_DECRYPT(c.CUST_EMAIL)) AS "이메일",
     
-    -- ========== 국적 정보 ========1
-    
-    ==
+    -- ========== 국적 정보 ==========
     n1.NAT_KO_NM AS "국적",
     n1.LEN2_ABBR_NAT_CD AS "국적코드",
     
@@ -157,8 +156,13 @@ SELECT
     -- 사업장 정보 (법인)
     CASE WHEN c.CUST_TYPE_CD = '02' THEN n4.NAT_KO_NM END AS "사업장소재지국가",
     CASE WHEN c.CUST_TYPE_CD = '02' THEN ce.POBS_ZIPCD END AS "사업장우편번호",
-    CASE WHEN c.CUST_TYPE_CD = '02' THEN ce.POBS_ADDR END AS "사업장주소",
-    CASE WHEN c.CUST_TYPE_CD = '02' THEN ce.POBS_DTL_ADDR END AS "사업장상세주소",
+    CASE 
+        WHEN c.CUST_TYPE_CD = '02' AND ce.POBS_DTL_ADDR IS NOT NULL 
+        THEN ce.POBS_ADDR || ' ' || ce.POBS_DTL_ADDR
+        WHEN c.CUST_TYPE_CD = '02' 
+        THEN ce.POBS_ADDR
+        ELSE NULL
+    END AS "사업장주소",
     
     -- 실제소유자 관련 (법인)
     CASE WHEN c.CUST_TYPE_CD = '02' THEN
@@ -205,7 +209,7 @@ SELECT
     (SELECT AML_DTL_CD_NM FROM SM_CD_DTL WHERE AML_COMN_CD = 'EXAM_RVIW_STAT_CD' AND AML_DTL_CD = c.EXAM_RVIW_STAT_CD) AS "심사상태"
     
 FROM BTCAMLDB_OWN.KYC_CUST_BASE c
--- 회원 정보
+-- 회원 정보 (LEFT JOIN으로 MEM_BASE에 없어도 KYC_EXE_MEM_ID 사용 가능)
 LEFT JOIN BTCAMLDB_OWN.KYC_MEM_BASE m
     ON c.CUST_ID = m.CUST_ID
 -- RA 등급 (최신)

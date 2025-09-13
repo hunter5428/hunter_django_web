@@ -337,68 +337,14 @@
      */
     
     // ==================== 통합 고객 정보 테이블 ====================
+    // CustomerUnifiedTable 클래스 수정 부분
     class CustomerUnifiedTable extends TableComponent {
         constructor(containerId) {
             super(containerId, {
                 ...TableOptions.KEY_VALUE_2COL,
                 emptyMessage: '고객 정보가 없습니다.',
-                className: 'table-kv-2col customer-unified-table',
-                skipNull: true,
-                groupedSections: [
-                    {
-                        title: '기본 정보',
-                        fields: ['고객ID', 'MID', '성명', '영문명', '고객구분', '실명번호구분', '실명번호', '생년월일/설립일', '성별']
-                    },
-                    {
-                        title: '연락처 정보',
-                        fields: ['연락처', '이메일']
-                    },
-                    {
-                        title: '거주지 정보',
-                        fields: ['국적', '국적코드', '거주지국가', '거주지우편번호', '거주지주소', '거주지상세주소']
-                    },
-                    {
-                        title: '직장 정보',
-                        fields: ['직업/업종', '직업대분류', '직업소분류', '직위', '직장명', '직장국가', '직장우편번호', '직장주소', '직장상세주소']
-                    },
-                    {
-                        title: '거래 정보',
-                        fields: ['거래목적', '거래목적기타', '주요소득원천', '주요소득원천기타', '월평균소득/매출', '매매거래자금원천', '총자산규모', '월평균예상거래횟수', '월평균예상거래규모_입출금', '월평균예상거래규모_가상자산']
-                    },
-                    {
-                        title: '리스크 정보',
-                        fields: ['RA등급', '위험등급', '고액자산가', 'STR보고건수', '최종STR보고일', 'Alert건수']
-                    },
-                    {
-                        title: '법인 기본 정보',
-                        fields: ['법인유형', '업종코드', '시장참여단계', '상장여부', '사업자등록번호', '국내신고대상VASP여부', '비영리단체설립목적'],
-                        condition: (data) => data['고객구분'] === '법인'
-                    },
-                    {
-                        title: '법인 사업장 정보',
-                        fields: ['사업장소재지국가', '사업장우편번호', '사업장주소', '사업장상세주소'],
-                        condition: (data) => data['고객구분'] === '법인'
-                    },
-                    {
-                        title: '법인 실제소유자 정보',
-                        fields: ['실제소유자식별면제대상', '면제대상구분', '실제소유자식별단계'],
-                        condition: (data) => data['고객구분'] === '법인'
-                    },
-                    {
-                        title: '법인 소득 정보',
-                        fields: ['소득유형1', '소득유형1구간', '소득유형2', '소득유형2구간'],
-                        condition: (data) => data['고객구분'] === '법인'
-                    },
-                    {
-                        title: '법인 인증 정보',
-                        fields: ['VASP신고수리번호', 'VASP신고수리일', 'VASP신고수리만료일', 'ISMS인증번호', 'ISMS발급일', 'ISMS만료일'],
-                        condition: (data) => data['고객구분'] === '법인' && data['국내신고대상VASP여부'] === 'Y'
-                    },
-                    {
-                        title: 'KYC 심사 정보',
-                        fields: ['KYC완료일시', '심사상태']
-                    }
-                ]
+                className: 'customer-unified-table',
+                skipNull: true
             });
         }
         
@@ -408,82 +354,64 @@
                 return;
             }
             
-            const container = document.createElement('div');
-            container.className = 'customer-info-sections';
+            const table = document.createElement('table');
+            table.className = 'customer-unified-table';
             
+            const tbody = document.createElement('tbody');
             const row = this.rows[0];
-            const dataMap = {};
             
+            // NULL이 아닌 필드만 필터링
+            const validFields = [];
             this.columns.forEach((col, idx) => {
-                dataMap[col] = row[idx];
+                const value = row[idx];
+                if (value != null && value !== '') {
+                    validFields.push({ col, value, idx });
+                }
             });
             
-            this.options.groupedSections.forEach(section => {
-                if (section.condition && !section.condition(dataMap)) {
-                    return;
+            // 2열 레이아웃으로 렌더링
+            for (let i = 0; i < validFields.length; i += 2) {
+                const tr = document.createElement('tr');
+                
+                // 첫 번째 열
+                const field1 = validFields[i];
+                const th1 = document.createElement('th');
+                th1.textContent = field1.col;
+                tr.appendChild(th1);
+                
+                const td1 = document.createElement('td');
+                td1.innerHTML = this.formatCellValue(field1.value, field1.col, field1.idx);
+                tr.appendChild(td1);
+                
+                // 두 번째 열
+                if (i + 1 < validFields.length) {
+                    const field2 = validFields[i + 1];
+                    const th2 = document.createElement('th');
+                    th2.textContent = field2.col;
+                    tr.appendChild(th2);
+                    
+                    const td2 = document.createElement('td');
+                    td2.innerHTML = this.formatCellValue(field2.value, field2.col, field2.idx);
+                    tr.appendChild(td2);
+                } else {
+                    // 마지막 행이 홀수인 경우 빈 셀 추가
+                    const th2 = document.createElement('th');
+                    th2.innerHTML = '&nbsp;';
+                    tr.appendChild(th2);
+                    
+                    const td2 = document.createElement('td');
+                    td2.innerHTML = '&nbsp;';
+                    tr.appendChild(td2);
                 }
                 
-                const sectionFields = section.fields.filter(field => 
-                    dataMap.hasOwnProperty(field) && dataMap[field] != null && dataMap[field] !== ''
-                );
-                
-                if (sectionFields.length === 0) {
-                    return;
-                }
-                
-                const sectionTitle = document.createElement('h4');
-                sectionTitle.className = 'section-subtitle';
-                sectionTitle.textContent = section.title;
-                container.appendChild(sectionTitle);
-                
-                const table = document.createElement('table');
-                table.className = 'table-kv-2col';
-                const tbody = document.createElement('tbody');
-                
-                for (let i = 0; i < sectionFields.length; i += 2) {
-                    const tr = document.createElement('tr');
-                    
-                    const field1 = sectionFields[i];
-                    const th1 = document.createElement('th');
-                    th1.textContent = field1;
-                    tr.appendChild(th1);
-                    
-                    const td1 = document.createElement('td');
-                    td1.setAttribute('data-field', field1);
-                    td1.innerHTML = this.formatCellValue(dataMap[field1], field1);
-                    tr.appendChild(td1);
-                    
-                    if (i + 1 < sectionFields.length) {
-                        const field2 = sectionFields[i + 1];
-                        const th2 = document.createElement('th');
-                        th2.textContent = field2;
-                        tr.appendChild(th2);
-                        
-                        const td2 = document.createElement('td');
-                        td2.setAttribute('data-field', field2);
-                        td2.innerHTML = this.formatCellValue(dataMap[field2], field2);
-                        tr.appendChild(td2);
-                    } else {
-                        const th2 = document.createElement('th');
-                        th2.innerHTML = '&nbsp;';
-                        tr.appendChild(th2);
-                        
-                        const td2 = document.createElement('td');
-                        td2.innerHTML = '&nbsp;';
-                        tr.appendChild(td2);
-                    }
-                    
-                    tbody.appendChild(tr);
-                }
-                
-                table.appendChild(tbody);
-                container.appendChild(table);
-            });
+                tbody.appendChild(tr);
+            }
             
+            table.appendChild(tbody);
             this.container.innerHTML = '';
-            this.container.appendChild(container);
+            this.container.appendChild(table);
         }
-    }
+    }   
 
     // 법인 관련인 테이블 클래스
     class CorpRelatedPersonsTable extends TableComponent {
@@ -496,112 +424,133 @@
         }
     }
 
-    // DuplicatePersonsTable 클래스
+    // DuplicatePersonsTable 클래스 전체 재작성
     class DuplicatePersonsTable extends TableComponent {
         constructor(containerId, matchCriteria) {
             super(containerId, {
-                className: 'table duplicate-persons-table',
+                className: 'duplicate-persons-container',
                 emptyMessage: '동일한 E-mail, 휴대폰 번호, 거주주소, 직장명, 직장주소를 가진 회원이 조회되지 않습니다.',
-                showHeader: true
+                showHeader: false
             });
             this.matchCriteria = matchCriteria || {};
-            this.visibleColumnIndices = [];
+            this.fieldsToShow = [
+                'MATCH_TYPES', '고객ID', 'MID', '성명', 
+                '영문명', '실명번호', '생년월일', 'E-mail',
+                '휴대폰 번호', '거주주소국가', '거주주소', '직장명', 
+                '직장주소', '직업/업종'
+            ];
         }
         
-        setData(columns, rows) {
-            this.columns = columns || [];
-            this.rows = rows || [];
-            
-            this.visibleColumnIndices = [];
-            if (this.rows.length > 0) {
-                this.columns.forEach((col, idx) => {
-                    if (col === 'MATCH_TYPES') return;
-                    
-                    const hasNonNullValue = this.rows.some(row => {
-                        const value = row[idx];
-                        return value != null && value !== '';
-                    });
-                    
-                    if (hasNonNullValue) {
-                        this.visibleColumnIndices.push(idx);
-                    }
-                });
-            } else {
-                this.columns.forEach((col, idx) => {
-                    if (col !== 'MATCH_TYPES') {
-                        this.visibleColumnIndices.push(idx);
-                    }
-                });
+        render() {
+            if (!this.rows || this.rows.length === 0) {
+                this.renderEmpty();
+                return;
             }
             
-            return this;
-        }
-        
-        createTableHeader() {
-            const thead = document.createElement('thead');
-            const tr = document.createElement('tr');
+            const container = document.createElement('div');
+            container.className = 'duplicate-persons-wrapper';
             
-            this.visibleColumnIndices.forEach(idx => {
-                const th = document.createElement('th');
-                th.textContent = this.columns[idx];
-                tr.appendChild(th);
-            });
-            
-            thead.appendChild(tr);
-            return thead;
-        }
-        
-        createTableBody() {
-            const tbody = document.createElement('tbody');
-            
-            const emailIdx = this.columns.indexOf('E-mail');
-            const phoneIdx = this.columns.indexOf('휴대폰 번호');
-            const addressIdx = this.columns.indexOf('거주주소');
-            const detailAddressIdx = this.columns.indexOf('거주상세주소');
-            const workplaceNameIdx = this.columns.indexOf('직장명');
-            const workplaceAddressIdx = this.columns.indexOf('직장주소');
-            const workplaceDetailAddressIdx = this.columns.indexOf('직장상세주소');
-            const matchTypesIdx = this.columns.indexOf('MATCH_TYPES');
-            
+            // 각 행(사람)별로 렌더링
             this.rows.forEach((row, rowIndex) => {
-                const tr = document.createElement('tr');
-                const matchTypes = matchTypesIdx >= 0 ? row[matchTypesIdx] : '';
+                const personGroup = document.createElement('div');
+                personGroup.className = 'duplicate-person-group';
                 
-                if (this.options.hoverEffect) {
-                    tr.addEventListener('mouseenter', () => tr.classList.add('hover'));
-                    tr.addEventListener('mouseleave', () => tr.classList.remove('hover'));
-                }
+                // 헤더 생성 (이름과 CID)
+                const nameIdx = this.columns.indexOf('성명');
+                const cidIdx = this.columns.indexOf('고객ID');
+                const matchTypesIdx = this.columns.indexOf('MATCH_TYPES');
                 
-                this.visibleColumnIndices.forEach(colIndex => {
-                    const td = document.createElement('td');
-                    const value = row[colIndex];
-                    
-                    if (matchTypes && (
-                        (matchTypes.includes('EMAIL') && colIndex === emailIdx) ||
-                        (matchTypes.includes('ADDRESS') && (colIndex === addressIdx || colIndex === detailAddressIdx)) ||
-                        (matchTypes.includes('WORKPLACE_NAME') && colIndex === workplaceNameIdx) ||
-                        (matchTypes.includes('WORKPLACE_ADDRESS') && (colIndex === workplaceAddressIdx || colIndex === workplaceDetailAddressIdx))
-                    )) {
-                        td.style.backgroundColor = '#383838';
-                        td.style.fontWeight = '600';
-                    }
-                    
-                    if (colIndex === phoneIdx && this.matchCriteria.phone_suffix) {
-                        const phone = String(value || '');
-                        if (phone.slice(-4) === this.matchCriteria.phone_suffix) {
-                            td.style.backgroundColor = '#383838';
-                            td.style.fontWeight = '600';
+                const name = row[nameIdx] || 'N/A';
+                const cid = row[cidIdx] || 'N/A';
+                const matchTypes = row[matchTypesIdx] || '';
+                
+                const header = document.createElement('div');
+                header.className = 'duplicate-person-header';
+                header.textContent = `${name} (CID: ${cid})`;
+                personGroup.appendChild(header);
+                
+                // 그리드 생성 (최대 8개씩)
+                const grid = document.createElement('div');
+                grid.className = 'duplicate-person-grid';
+                
+                // 표시할 필드 렌더링
+                let fieldCount = 0;
+                this.fieldsToShow.forEach(fieldName => {
+                    const colIdx = this.columns.indexOf(fieldName);
+                    if (colIdx >= 0 && fieldCount < 8) {
+                        const value = row[colIdx];
+                        
+                        // MATCH_TYPES는 표시하지 않음 (내부적으로만 사용)
+                        if (fieldName === 'MATCH_TYPES') return;
+                        
+                        // NULL이나 빈 값은 건너뛰기
+                        if (value == null || value === '') return;
+                        
+                        const field = document.createElement('div');
+                        field.className = 'duplicate-field';
+                        
+                        // 매칭 여부 확인
+                        const isMatched = this.checkIfFieldMatched(fieldName, value, matchTypes);
+                        if (isMatched) {
+                            field.classList.add('matched');
                         }
+                        
+                        const label = document.createElement('div');
+                        label.className = 'duplicate-field-label';
+                        label.textContent = fieldName;
+                        
+                        const valueDiv = document.createElement('div');
+                        valueDiv.className = 'duplicate-field-value';
+                        valueDiv.textContent = value || '';
+                        
+                        field.appendChild(label);
+                        field.appendChild(valueDiv);
+                        grid.appendChild(field);
+                        
+                        fieldCount++;
                     }
-                    
-                    td.innerHTML = this.formatCellValue(value, this.columns[colIndex], colIndex, row);
-                    tr.appendChild(td);
                 });
                 
-                tbody.appendChild(tr);
+                personGroup.appendChild(grid);
+                container.appendChild(personGroup);
             });
             
-            return tbody;
+            this.container.innerHTML = '';
+            this.container.appendChild(container);
+        }
+        
+        checkIfFieldMatched(fieldName, value, matchTypes) {
+            if (!matchTypes || !value) return false;
+            
+            // 이메일 매칭
+            if (fieldName === 'E-mail' && matchTypes.includes('EMAIL')) {
+                return true;
+            }
+            
+            // 주소 매칭
+            if (fieldName === '거주주소' && matchTypes.includes('ADDRESS')) {
+                return true;
+            }
+            
+            // 직장명 매칭
+            if (fieldName === '직장명' && matchTypes.includes('WORKPLACE_NAME')) {
+                return true;
+            }
+            
+            // 직장주소 매칭
+            if (fieldName === '직장주소' && matchTypes.includes('WORKPLACE_ADDRESS')) {
+                return true;
+            }
+            
+            // 전화번호 매칭 (뒷 4자리)
+            if (fieldName === '휴대폰 번호' && this.matchCriteria.phone_suffix) {
+                const phone = String(value);
+                if (phone.slice(-4) === this.matchCriteria.phone_suffix) {
+                    return true;
+                }
+            }
+            
+            return false;
         }
     }
 
@@ -928,8 +877,8 @@
         table.render();
     };
 
-    // 개인 관련인 정보 렌더링
-    window.renderPersonRelatedSection = function(summaryText) {
+    // 개인 관련인 정보 렌더링 (테이블 형태로 변경)
+    window.renderPersonRelatedSection = function(relatedPersonsData) {
         const section = document.getElementById('section_person_related');
         const container = document.getElementById('result_table_person_related');
         
@@ -940,7 +889,9 @@
         
         section.style.display = 'block';
         
-        if (!summaryText) {
+        // relatedPersonsData가 문자열인 경우 (기존 텍스트 형태)는 무시하고
+        // 새로운 구조화된 데이터 형태를 기대
+        if (!relatedPersonsData || typeof relatedPersonsData === 'string') {
             container.innerHTML = `
                 <div class="card empty-row">
                     내부입출금 거래 관련인 정보가 없습니다.
@@ -949,43 +900,154 @@
             return;
         }
         
-        container.innerHTML = `
-            <div class="person-related-summary">
-                <pre class="summary-text">${escapeHtml(summaryText)}</pre>
+        // 관련인 정보를 테이블로 렌더링
+        let html = '';
+        let personIndex = 0;
+        
+        for (const [custId, data] of Object.entries(relatedPersonsData)) {
+            const info = data.info;
+            const transactions = data.transactions || [];
+            
+            if (!info) continue;
+            
+            personIndex++;
+            
+            // 관련인 헤더
+            html += `<div class="related-person-header">◆ 관련인 ${personIndex}: ${info.name || 'N/A'} (CID: ${custId})</div>`;
+            
+            // 기본 정보 테이블
+            html += `
+            <table class="person-related-table">
+                <tbody>
+                    <tr>
+                        <th>실명번호</th>
+                        <td>${info.id_number || 'N/A'}</td>
+                        <th>생년월일</th>
+                        <td>${info.birth_date || 'N/A'} (만 ${info.age || 'N/A'}세)</td>
+                    </tr>
+                    <tr>
+                        <th>성별</th>
+                        <td>${info.gender || 'N/A'}</td>
+                        <th>거주지</th>
+                        <td>${info.address || 'N/A'}</td>
+                    </tr>`;
+            
+            if (info.job || info.workplace) {
+                html += `
+                    <tr>
+                        <th>직업</th>
+                        <td>${info.job || 'N/A'}</td>
+                        <th>직장명</th>
+                        <td>${info.workplace || 'N/A'}</td>
+                    </tr>`;
+            }
+            
+            if (info.workplace_addr) {
+                html += `
+                    <tr>
+                        <th>직장주소</th>
+                        <td colspan="3">${info.workplace_addr}</td>
+                    </tr>`;
+            }
+            
+            html += `
+                    <tr>
+                        <th>자금의 원천</th>
+                        <td>${info.income_source || 'N/A'}</td>
+                        <th>거래목적</th>
+                        <td>${info.tran_purpose || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <th>위험등급</th>
+                        <td>${info.risk_grade || 'N/A'}</td>
+                        <th>총 거래횟수</th>
+                        <td>${info.total_tran_count || 0}회</td>
+                    </tr>
+                </tbody>
+            </table>`;
+            
+            // 거래 내역 테이블
+            if (transactions.length > 0) {
+                // 내부입고/출고 분리
+                const deposits = transactions.filter(t => t.tran_type === '내부입고');
+                const withdrawals = transactions.filter(t => t.tran_type === '내부출고');
+                
+                html += `
+                <table class="person-related-table transaction-table">
+                    <thead>
+                        <tr>
+                            <th colspan="4">내부입고</th>
+                            <th colspan="4">내부출고</th>
+                        </tr>
+                        <tr>
+                            <th>종목</th>
+                            <th>수량</th>
+                            <th>금액</th>
+                            <th>건수</th>
+                            <th>종목</th>
+                            <th>수량</th>
+                            <th>금액</th>
+                            <th>건수</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+                
+                const maxRows = Math.max(deposits.length, withdrawals.length);
+                
+                for (let i = 0; i < maxRows; i++) {
+                    html += '<tr>';
+                    
+                    // 내부입고
+                    if (i < deposits.length) {
+                        const d = deposits[i];
+                        const qty = parseFloat(d.tran_qty || 0);
+                        const amt = parseFloat(d.tran_amt || 0);
+                        const cnt = parseInt(d.tran_cnt || 0);
+                        
+                        html += `
+                            <td>${d.coin_symbol || '-'}</td>
+                            <td>${qty.toLocaleString('ko-KR', {minimumFractionDigits: 4})}</td>
+                            <td>${amt.toLocaleString('ko-KR')}원</td>
+                            <td>${cnt}건</td>`;
+                    } else {
+                        html += '<td>-</td><td>-</td><td>-</td><td>-</td>';
+                    }
+                    
+                    // 내부출고
+                    if (i < withdrawals.length) {
+                        const w = withdrawals[i];
+                        const qty = parseFloat(w.tran_qty || 0);
+                        const amt = parseFloat(w.tran_amt || 0);
+                        const cnt = parseInt(w.tran_cnt || 0);
+                        
+                        html += `
+                            <td>${w.coin_symbol || '-'}</td>
+                            <td>${qty.toLocaleString('ko-KR', {minimumFractionDigits: 4})}</td>
+                            <td>${amt.toLocaleString('ko-KR')}원</td>
+                            <td>${cnt}건</td>`;
+                    } else {
+                        html += '<td>-</td><td>-</td><td>-</td><td>-</td>';
+                    }
+                    
+                    html += '</tr>';
+                }
+                
+                html += `
+                    </tbody>
+                </table>`;
+            }
+            
+            // 관련인 간 구분선
+            if (personIndex < Object.keys(relatedPersonsData).length) {
+                html += '<hr style="margin: 20px 0; border: none; border-top: 1px solid #2a2a2a;">';
+            }
+        }
+        
+        container.innerHTML = html || `
+            <div class="card empty-row">
+                내부입출금 거래 관련인 정보가 없습니다.
             </div>
         `;
-        
-        // person-related-summary 스타일만 추가 (customer-info-sections 스타일은 CSS 파일에서 처리)
-        if (!document.getElementById('person-related-style')) {
-            const style = document.createElement('style');
-            style.id = 'person-related-style';
-            style.textContent = `
-                .person-related-summary {
-                    background: #1a1a1a;
-                    border: 1px solid #2a2a2a;
-                    border-radius: 12px;
-                    padding: 16px;
-                    margin-top: 10px;
-                }
-                
-                .person-related-summary .summary-text {
-                    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-                    font-size: 13px;
-                    line-height: 1.5;
-                    color: #eaeaea;
-                    white-space: pre-wrap;
-                    word-wrap: break-word;
-                    margin: 0;
-                    background: transparent;
-                    border: none;
-                }
-                
-                .person-related-summary .summary-text strong {
-                    color: #4fc3f7;
-                }
-            `;
-            document.head.appendChild(style);
-        }
     };
     
     // HTML 이스케이프 헬퍼 함수

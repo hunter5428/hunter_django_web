@@ -331,14 +331,15 @@
                 
                 const relatedData = await response.json();
                 if (relatedData.success) {
-                    window.renderPersonRelatedSection(relatedData.summary_text);
+                    // 구조화된 데이터를 테이블 렌더링 함수에 전달
+                    window.renderPersonRelatedSection(relatedData.related_persons);
                 } else {
                     console.error('Person related summary query failed:', relatedData.message);
-                    window.renderPersonRelatedSection('관련인 정보 조회 실패: ' + relatedData.message);
+                    window.renderPersonRelatedSection(null);
                 }
             } catch (error) {
                 console.error('Person related summary fetch failed:', error);
-                window.renderPersonRelatedSection('관련인 정보 조회 중 오류 발생');
+                window.renderPersonRelatedSection(null);
             }
         }
 
