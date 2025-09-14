@@ -623,10 +623,10 @@ def query_ip_access_history(request, oracle_conn=None):
     logger.info(f"Querying IP access history - MID: {mem_id}, period: {start_date} ~ {end_date}")
     
     try:
-        # ip_connection_history.sql 실행 (파일명 수정)
+        # query_ip_access_history.sql 실행
         result = execute_query_with_error_handling(
             oracle_conn=oracle_conn,
-            sql_filename='ip_connection_history.sql',  # 실제 파일명으로 수정
+            sql_filename='query_ip_access_history.sql',  # 실제 파일명으로 수정
             bind_params={
                 ':mem_id': '?',
                 ':start_date': '?', 
