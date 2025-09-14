@@ -995,7 +995,7 @@ def query_redshift_orderbook(request):
         # 응답 생성 (현재는 메타데이터만 반환)
         return JsonResponse({
             'success': True,
-            'message': f'Orderbook 데이터를 메모리에 저장했습니다.',
+            'message': f'Orderbook(거래원장) 데이터를 메모리에 저장했습니다.',
             'cache_key': cache_key,
             'rows_count': len(df),
             'columns': list(df.columns),
