@@ -477,11 +477,12 @@
                 let fieldCount = 0;
                 this.fieldsToShow.forEach(fieldName => {
                     const colIdx = this.columns.indexOf(fieldName);
-                    if (colIdx >= 0 && fieldCount < 8) {
+                    //if (colIdx >= 0 && fieldCount < 8) {
+                    if (colIdx >= 0) {
                         const value = row[colIdx];
                         
                         // MATCH_TYPES는 표시하지 않음 (내부적으로만 사용)
-                        if (fieldName === 'MATCH_TYPES') return;
+                        //if (fieldName === 'MATCH_TYPES') return;
                         
                         // NULL이나 빈 값은 건너뛰기
                         if (value == null || value === '') return;
