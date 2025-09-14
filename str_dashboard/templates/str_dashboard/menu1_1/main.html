@@ -5,17 +5,150 @@
 <link rel="stylesheet" href="{% static 'str_dashboard/css/menu1_1.css' %}">
 <link rel="stylesheet" href="{% static 'str_dashboard/css/table.component.css' %}">
 <link rel="stylesheet" href="{% static 'str_dashboard/css/customer_unified.css' %}">
+<style>
+/* 듀얼 DB 연결 모달 스타일 */
+.dual-db-modal .modal {
+    max-width: 900px;
+}
+
+.dual-db-container {
+    display: flex;
+    gap: 20px;
+    margin-top: 15px;
+}
+
+.db-section {
+    flex: 1;
+    padding: 15px;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    background: #0a0a0a;
+}
+
+.db-section h4 {
+    margin: 0 0 15px 0;
+    color: #4fc3f7;
+    font-size: 14px;
+    font-weight: 700;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #2a2a2a;
+}
+
+.db-section .grid {
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    gap: 8px 10px;
+}
+
+.db-section .grid label {
+    font-size: 12px;
+}
+
+.db-section .grid input {
+    font-size: 12px;
+    padding: 8px 10px;
+}
+
+.db-status-container {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.db-status-container .badge {
+    font-size: 11px;
+    padding: 4px 8px;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid #2a2a2a;
+}
+
+.modal-actions-left {
+    display: flex;
+    gap: 8px;
+}
+
+.modal-actions-right {
+    display: flex;
+    gap: 8px;
+}
+
+/* 로딩 상태 */
+.btn.loading {
+    opacity: 0.7;
+    cursor: wait;
+}
+
+.btn.loading::after {
+    content: '...';
+    animation: dots 1.5s infinite;
+}
+
+@keyframes dots {
+    0%, 20% { content: '.'; }
+    40% { content: '..'; }
+    60%, 100% { content: '...'; }
+}
+
+/* 성공/실패 표시 */
+.connection-status {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    margin-left: 8px;
+}
+
+.connection-status.success {
+    background: #0f2314;
+    color: #4caf50;
+    border: 1px solid #214a2c;
+}
+
+.connection-status.fail {
+    background: #2a1414;
+    color: #ff6b6b;
+    border: 1px solid #4a2424;
+}
+
+@media (max-width: 768px) {
+    .dual-db-container {
+        flex-direction: column;
+    }
+    
+    .dual-db-modal .modal {
+        max-width: 100%;
+        margin: 10px;
+    }
+}
+</style>
 {% endblock %}
 
 {% block content %}
 <!-- 상단 컨트롤 영역 -->
 <div class="top-row">
     <button class="btn" id="btn-open-db-modal">DB Connection</button>
-    {% if db_status == 'ok' %}
-        <span id="db-status" class="badge ok">연결 완료</span>
-    {% else %}
-        <span id="db-status" class="badge">연결 필요</span>
-    {% endif %}
+    <div class="db-status-container">
+        <!-- Oracle 상태 -->
+        {% if db_status == 'ok' %}
+            <span id="oracle-status" class="badge ok">Oracle 연결</span>
+        {% else %}
+            <span id="oracle-status" class="badge">Oracle 미연결</span>
+        {% endif %}
+        
+        <!-- Redshift 상태 -->
+        {% if rs_status == 'ok' %}
+            <span id="redshift-status" class="badge ok">Redshift 연결</span>
+        {% else %}
+            <span id="redshift-status" class="badge">Redshift 미연결</span>
+        {% endif %}
+    </div>
 </div>
 
 <!-- 조회 영역 -->
@@ -25,6 +158,7 @@
     <button class="btn" id="alert_id_search_btn">조회</button>
 </div>
 
+<!-- 기존 섹션들 그대로 유지 -->
 <!-- 2분할 레이아웃: 고객 정보 & 동일_차명의심_상세 정보 -->
 <div class="split-layout-container">
     <!-- 왼쪽: 통합 고객 정보 -->
@@ -80,35 +214,76 @@
     <div class="table-wrap" id="result_table_rule_distinct"></div>
 </div>
 
-<!-- 섹션: IP 접속 이력 (발생한 RULE의 정보(DISTINCT) 섹션 다음에 추가) -->
+<!-- 섹션: IP 접속 이력 -->
 <div id="section_ip_access_history" class="section collapsed" style="display:none;">
     <h3>IP 접속 이력</h3>
     <div class="table-wrap" id="result_table_ip_access_history"></div>
 </div>
 
-<!-- DB 연결 모달 -->
-<div class="modal-backdrop" id="db-modal">
+<!-- 듀얼 DB 연결 모달 -->
+<div class="modal-backdrop dual-db-modal" id="db-modal">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="db-modal-title">
-        <h3 id="db-modal-title">오라클 연결 설정</h3>
-        <div class="grid">
-            <label for="host">host</label> 
-            <input id="host" type="text" value="{{ default_host }}">
+        <h3 id="db-modal-title">데이터베이스 연결 설정</h3>
+        
+        <div class="dual-db-container">
+            <!-- Oracle 섹션 -->
+            <div class="db-section" id="oracle-section">
+                <h4>Oracle Database</h4>
+                <div class="grid">
+                    <label for="oracle_host">Host</label>
+                    <input id="oracle_host" type="text" value="{{ default_host }}">
+                    
+                    <label for="oracle_port">Port</label>
+                    <input id="oracle_port" type="text" value="{{ default_port }}">
+                    
+                    <label for="oracle_service">Service</label>
+                    <input id="oracle_service" type="text" value="{{ default_service }}">
+                    
+                    <label for="oracle_username">Username</label>
+                    <input id="oracle_username" type="text" value="{{ default_username }}">
+                    
+                    <label for="oracle_password">Password</label>
+                    <input id="oracle_password" type="password" value="">
+                </div>
+                <div style="margin-top: 10px; text-align: center;">
+                    <button class="btn btn-secondary" id="btn-test-oracle" style="width: 100%;">Oracle 연결 테스트</button>
+                    <span id="oracle-test-result" class="connection-status" style="display: none;"></span>
+                </div>
+            </div>
             
-            <label for="port">port</label> 
-            <input id="port" type="text" value="{{ default_port }}">
-            
-            <label for="service_name">service name</label> 
-            <input id="service_name" type="text" value="{{ default_service }}">
-            
-            <label for="username">user name</label> 
-            <input id="username" type="text" value="{{ default_username }}">
-            
-            <label for="password">pass word</label> 
-            <input id="password" type="password" value="">
+            <!-- Redshift 섹션 -->
+            <div class="db-section" id="redshift-section">
+                <h4>Amazon Redshift</h4>
+                <div class="grid">
+                    <label for="redshift_host">Host</label>
+                    <input id="redshift_host" type="text" value="{{ default_rs_host }}">
+                    
+                    <label for="redshift_port">Port</label>
+                    <input id="redshift_port" type="text" value="{{ default_rs_port }}">
+                    
+                    <label for="redshift_dbname">Database</label>
+                    <input id="redshift_dbname" type="text" value="{{ default_rs_dbname }}">
+                    
+                    <label for="redshift_username">Username</label>
+                    <input id="redshift_username" type="text" value="{{ default_rs_username }}">
+                    
+                    <label for="redshift_password">Password</label>
+                    <input id="redshift_password" type="password" value="">
+                </div>
+                <div style="margin-top: 10px; text-align: center;">
+                    <button class="btn btn-secondary" id="btn-test-redshift" style="width: 100%;">Redshift 연결 테스트</button>
+                    <span id="redshift-test-result" class="connection-status" style="display: none;"></span>
+                </div>
+            </div>
         </div>
+        
         <div class="modal-actions">
-            <button class="btn btn-secondary" id="btn-close-db-modal">뒤로</button>
-            <button class="btn btn-primary" id="btn-test-conn">연결 확인</button>
+            <div class="modal-actions-left">
+                <button class="btn btn-secondary" id="btn-close-db-modal">닫기</button>
+            </div>
+            <div class="modal-actions-right">
+                <button class="btn btn-primary" id="btn-connect-all">모두 연결</button>
+            </div>
         </div>
     </div>
 </div>
@@ -120,19 +295,29 @@
 window.RULE_OBJ_MAP = {{ rule_obj_map_json|safe }};
 
 window.URLS = {
-    test_connection: "{% url 'test_oracle_connection' %}",
+    test_oracle_connection: "{% url 'test_oracle_connection' %}",
+    test_redshift_connection: "{% url 'test_redshift_connection' %}",
+    connect_all_databases: "{% url 'connect_all_databases' %}",
     query_alert: "{% url 'query_alert_info' %}",
     query_customer_unified: "{% url 'query_customer_unified' %}",
     rule_history: "{% url 'rule_history_search' %}",
     query_duplicate_unified: "{% url 'query_duplicate_unified' %}",
     query_corp_related_persons: "{% url 'query_corp_related_persons' %}",
     query_person_related_summary: "{% url 'query_person_related_summary' %}",
-    query_ip_access_history: "{% url 'query_ip_access_history' %}" 
+    query_ip_access_history: "{% url 'query_ip_access_history' %}",
+    
+    // Redshift Orderbook 관련 URL 추가
+    query_redshift_orderbook: "{% url 'query_redshift_orderbook' %}",
+    get_cached_orderbook_info: "{% url 'get_cached_orderbook_info' %}",
+    clear_orderbook_cache: "{% url 'clear_orderbook_cache' %}"
 };
 </script>
 
 <!-- 테이블 컴포넌트 -->
 <script src="{% static 'str_dashboard/js/table.component.js' %}"></script>
+
+<!-- 듀얼 DB 연결 관리 스크립트 -->
+<script src="{% static 'str_dashboard/js/dual_db_manager.js' %}"></script>
 
 <!-- 페이지 메인 로직 -->
 <script src="{% static 'str_dashboard/js/menu1_1.js' %}"></script>

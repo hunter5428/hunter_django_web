@@ -19,22 +19,24 @@ urlpatterns = [
     path('home/', views.home, name='home'),
     path('menu1/menu1_1/', views.menu1_1, name='menu1_1'),
 
-    # API
+    # Database Connection APIs
     path('api/test_oracle_connection/', views.test_oracle_connection, name='test_oracle_connection'),
+    path('api/test_redshift_connection/', views.test_redshift_connection, name='test_redshift_connection'),
+    path('api/connect_all_databases/', views.connect_all_databases, name='connect_all_databases'),
+    path('api/check_db_status/', views.check_db_status, name='check_db_status'),
+    
+    # Oracle Query APIs
     path('api/query_alert_info/', views.query_alert_info, name='query_alert_info'),
     path('api/query_customer_unified/', views.query_customer_unified_info, name='query_customer_unified'),
     path('api/rule_history_search/', views.rule_history_search, name='rule_history_search'),
-    
-    # 중복 회원 조회 API
     path('api/query_duplicate_unified/', views.query_duplicate_unified, name='query_duplicate_unified'),
-
-    # 법인 관련인 조회 API
     path('api/query_corp_related_persons/', views.query_corp_related_persons, name='query_corp_related_persons'),
-    
-    # 개인 관련인(내부입출금) 조회 API
     path('api/query_person_related_summary/', views.query_person_related_summary, name='query_person_related_summary'),
-    
-    # IP 접속 내역 조회 API
     path('api/query_ip_access_history/', views.query_ip_access_history, name='query_ip_access_history'),
+
+    # Redshift Orderbook APIs
+    path('api/query_redshift_orderbook/', views.query_redshift_orderbook, name='query_redshift_orderbook'),
+    path('api/get_cached_orderbook_info/', views.get_cached_orderbook_info, name='get_cached_orderbook_info'),
+    path('api/clear_orderbook_cache/', views.clear_orderbook_cache, name='clear_orderbook_cache'),
 
 ]

@@ -2,9 +2,9 @@
 
 /**
  * ALERT ID 조회 페이지 메인 JavaScript
+ * - 듀얼 DB (Oracle + Redshift) 지원
  * - 통합 고객 정보 조회 적용
  * - 테이블 컴포넌트 활용
- * - 부분 실패 시에도 성공한 데이터는 표시
  */
 (function() {
     'use strict';
@@ -17,97 +17,6 @@
         const parts = value.split(`; ${name}=`);
         return parts.length === 2 ? decodeURIComponent(parts.pop().split(';').shift()) : undefined;
     };
-
-    // ==================== 모달 관리 ====================
-    class ModalManager {
-        constructor(modalId) {
-            this.modal = $(modalId);
-            this.init();
-        }
-
-        init() {
-            this.modal?.addEventListener('click', (e) => {
-                if (e.target === this.modal) this.close();
-            });
-        }
-
-        open() {
-            if (this.modal) this.modal.style.display = 'flex';
-        }
-
-        close() {
-            if (this.modal) this.modal.style.display = 'none';
-        }
-    }
-
-    // ==================== DB 연결 관리 ====================
-    class DBConnectionManager {
-        constructor() {
-            this.modal = new ModalManager('#db-modal');
-            this.statusBadge = $('#db-status');
-            this.init();
-        }
-
-        init() {
-            $('#btn-open-db-modal')?.addEventListener('click', () => this.modal.open());
-            $('#btn-close-db-modal')?.addEventListener('click', () => this.modal.close());
-            $('#btn-test-conn')?.addEventListener('click', () => this.testConnection());
-        }
-
-        async testConnection() {
-            const fields = ['host', 'port', 'service_name', 'username', 'password'];
-            const data = {};
-
-            for (const field of fields) {
-                const value = $(`#${field}`)?.value?.trim();
-                if (!value) {
-                    alert(`${field}를 입력해주세요.`);
-                    return;
-                }
-                data[field] = value;
-            }
-
-            try {
-                const response = await fetch(window.URLS.test_connection, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
-                    body: new URLSearchParams(data)
-                });
-
-                const result = await response.json();
-                
-                if (result.success) {
-                    alert('연결에 성공했습니다');
-                    this.updateStatus(true);
-                    this.modal.close();
-                } else {
-                    alert(result.message || '연결에 실패했습니다');
-                }
-            } catch (error) {
-                alert('연결에 실패했습니다');
-                console.error(error);
-            }
-        }
-
-        updateStatus(isConnected) {
-            if (this.statusBadge) {
-                if (isConnected) {
-                    this.statusBadge.textContent = '연결 완료';
-                    this.statusBadge.classList.add('ok');
-                } else {
-                    this.statusBadge.textContent = '연결 필요';
-                    this.statusBadge.classList.remove('ok');
-                }
-            }
-        }
-
-        isConnected() {
-            return this.statusBadge && this.statusBadge.classList.contains('ok');
-        }
-    }
 
     // ==================== ALERT 조회 관리 ====================
     class AlertSearchManager {
@@ -126,9 +35,9 @@
         }
 
         async search() {
-            // DB 연결 상태 먼저 확인
-            if (!window.dbManager || !window.dbManager.isConnected()) {
-                alert('먼저 DB Connection에서 연결을 완료해 주세요.');
+            // 듀얼 DB 매니저를 통해 Oracle 연결 상태 확인
+            if (!window.dualDBManager || !window.dualDBManager.isOracleConnected()) {
+                alert('먼저 Oracle DB 연결을 완료해 주세요.');
                 $('#btn-open-db-modal')?.click();
                 return;
             }
@@ -141,6 +50,8 @@
             }
 
             console.log('Searching for ALERT ID:', alertId);
+            console.log('Oracle connected:', window.dualDBManager.isOracleConnected());
+            console.log('Redshift connected:', window.dualDBManager.isRedshiftConnected());
 
             // 초기화: 모든 섹션 숨기기
             document.querySelectorAll('.section').forEach(section => {
@@ -148,7 +59,7 @@
             });
 
             try {
-                // ALERT 정보 조회
+                // ALERT 정보 조회 (Oracle)
                 const alertResponse = await fetch(window.URLS.query_alert, {
                     method: 'POST',
                     headers: {
@@ -176,8 +87,15 @@
                 // Alert 데이터 저장 (나중에 사용)
                 this.alertData = { cols, rows, ...processedData };
                 
-                // 모든 섹션 데이터 조회 및 렌더링 (에러가 있어도 계속 진행)
+                // 모든 섹션 데이터 조회 및 렌더링
                 await this.fetchAndRenderAllSections(processedData);
+                
+                // Redshift 연결되어 있으면 추가 데이터 조회 가능
+                if (window.dualDBManager && window.dualDBManager.isRedshiftConnected()) {
+                    console.log('Redshift is connected, additional queries can be performed');
+                    // TODO: Redshift에서 추가 데이터 조회
+                    // await this.fetchRedshiftData(alertId);
+                }
                 
             } catch (error) {
                 console.error('Alert search error:', error);
@@ -223,7 +141,6 @@
             return { cols, rows, alertId, repRuleId, custIdForPerson, canonicalIds };
         }
 
-        // ==================== 통합 고객 정보 조회 ====================
         async fetchCustomerInfo(custId) {
             try {
                 // 통합 API 호출 - 한 번의 요청으로 모든 고객 정보 조회
@@ -267,6 +184,7 @@
                             customerType
                         );
                     }
+                    
                     // MID 추출 (통합 정보에서)
                     let memId = null;
                     if (customerData.rows && customerData.rows.length > 0) {
@@ -285,6 +203,20 @@
                         }
                     }
 
+                    if (memId) {
+                        const tranPeriod = this.extractTransactionPeriod();
+                        if (tranPeriod.start && tranPeriod.end) {
+                            console.log(`Fetching IP access history for MID: ${memId}`);
+                            await this.fetchIPAccessHistory(memId, tranPeriod);
+                            
+                            // Redshift Orderbook 조회 추가
+                            if (window.dualDBManager && window.dualDBManager.isRedshiftConnected()) {
+                                console.log(`Fetching Redshift orderbook for MID: ${memId}`);
+                                await this.fetchRedshiftOrderbook(memId, tranPeriod);
+                            }
+                        }
+                    }
+
 
 
                 } else {
@@ -297,7 +229,6 @@
             }
         }
 
-        // 3. AlertSearchManager 클래스에 새 메서드 추가
         async fetchIPAccessHistory(memId, tranPeriod) {
             try {
                 // 날짜 형식 변환 (YYYY-MM-DD 형식으로)
@@ -331,8 +262,6 @@
                 window.renderIPAccessHistorySection([], []);
             }
         }
-        
-
 
         async fetchCorpRelatedPersons(custId) {
             try {
@@ -388,7 +317,6 @@
                 
                 const relatedData = await response.json();
                 if (relatedData.success) {
-                    // 구조화된 데이터를 테이블 렌더링 함수에 전달
                     window.renderPersonRelatedSection(relatedData.related_persons);
                 } else {
                     console.error('Person related summary query failed:', relatedData.message);
@@ -400,7 +328,6 @@
             }
         }
 
-        // menu1_1.js의 extractTransactionPeriod 메서드 개선 버전
         extractTransactionPeriod() {
             // Alert 데이터에서 TRAN_STRT와 TRAN_END 컬럼 찾기
             if (!this.alertData) {
@@ -440,12 +367,9 @@
             
             // 날짜 형식 변환 (타임스탬프 형식 확인)
             if (minStart) {
-                // 이미 시간이 포함되어 있는지 확인
                 if (minStart.includes(' ')) {
-                    // 이미 날짜시간 형식인 경우 그대로 사용
                     minStart = minStart;
                 } else {
-                    // 날짜만 있는 경우 시간 추가
                     minStart = minStart + ' 00:00:00.000000000';
                 }
             }
@@ -648,12 +572,132 @@
             // Rule 설명 렌더링
             window.renderRuleDescSection(cols, rows, canonicalIds, repRuleId);
         }
+
+        async fetchRedshiftOrderbook(memId, tranPeriod) {
+            """
+            Redshift에서 Orderbook 데이터 조회 및 캐싱
+            """
+            // Redshift 연결 확인
+            if (!window.dualDBManager || !window.dualDBManager.isRedshiftConnected()) {
+                console.log('Redshift not connected, skipping orderbook query');
+                return null;
+            }
+            
+            if (!memId || !tranPeriod.start || !tranPeriod.end) {
+                console.log('Missing parameters for orderbook query');
+                return null;
+            }
+            
+            try {
+                // 날짜 형식 변환 (YYYY-MM-DD 형식으로)
+                const startDate = tranPeriod.start.split(' ')[0];
+                const endDate = tranPeriod.end.split(' ')[0];
+                
+                console.log(`Fetching Redshift orderbook - MID: ${memId}, period: ${startDate} ~ ${endDate}`);
+                
+                const response = await fetch(window.URLS.query_redshift_orderbook, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: new URLSearchParams({
+                        user_id: String(memId),
+                        tran_start: startDate,
+                        tran_end: endDate
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    console.log(`Orderbook data cached successfully:`);
+                    console.log(`  Cache key: ${result.cache_key}`);
+                    console.log(`  Rows: ${result.rows_count}`);
+                    console.log(`  Period queried: ${result.period.queried}`);
+                    
+                    // 성공 메시지 표시 (선택사항)
+                    if (result.rows_count > 0) {
+                        this.showOrderbookStatus(
+                            `Orderbook 데이터 ${result.rows_count}건이 메모리에 저장되었습니다.`,
+                            'success'
+                        );
+                    } else {
+                        this.showOrderbookStatus(
+                            'Orderbook 데이터가 없습니다.',
+                            'info'
+                        );
+                    }
+                    
+                    return result;
+                } else {
+                    console.error('Orderbook query failed:', result.message);
+                    this.showOrderbookStatus(
+                        `Orderbook 조회 실패: ${result.message}`,
+                        'error'
+                    );
+                    return null;
+                }
+                
+            } catch (error) {
+                console.error('Orderbook fetch error:', error);
+                this.showOrderbookStatus(
+                    'Orderbook 조회 중 오류가 발생했습니다.',
+                    'error'
+                );
+                return null;
+            }
+        }
+
+        showOrderbookStatus(message, type = 'info') {
+            """
+            Orderbook 조회 상태 메시지 표시
+            """
+            // 상태 표시 영역이 없으면 생성
+            let statusDiv = document.getElementById('orderbook-status');
+            if (!statusDiv) {
+                statusDiv = document.createElement('div');
+                statusDiv.id = 'orderbook-status';
+                statusDiv.style.cssText = `
+                    position: fixed;
+                    bottom: 20px;
+                    right: 20px;
+                    padding: 12px 20px;
+                    border-radius: 8px;
+                    font-size: 13px;
+                    z-index: 9999;
+                    transition: all 0.3s ease;
+                    max-width: 400px;
+                `;
+                document.body.appendChild(statusDiv);
+            }
+            
+            // 타입별 스타일 설정
+            const styles = {
+                'success': 'background: #0f2314; color: #4caf50; border: 1px solid #214a2c;',
+                'error': 'background: #2a1414; color: #ff6b6b; border: 1px solid #4a2424;',
+                'info': 'background: #141a2a; color: #4fc3f7; border: 1px solid #243a4a;'
+            };
+            
+            statusDiv.style.cssText += styles[type] || styles['info'];
+            statusDiv.textContent = message;
+            statusDiv.style.display = 'block';
+            
+            // 5초 후 자동 숨김
+            setTimeout(() => {
+                statusDiv.style.opacity = '0';
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                    statusDiv.style.opacity = '1';
+                }, 300);
+            }, 5000);
+        }
+
     }
 
     // ==================== 초기화 ====================
     document.addEventListener('DOMContentLoaded', function() {
-        // 매니저 인스턴스 생성
-        window.dbManager = new DBConnectionManager();
+        // Alert 검색 매니저만 생성 (DB 연결은 dual_db_manager.js에서 처리)
         window.alertManager = new AlertSearchManager();
 
         // 초기 상태: 섹션 숨김
@@ -661,7 +705,7 @@
             section.style.display = 'none';
         });
 
-        console.log('Menu1_1 page initialized');
+        console.log('Menu1_1 page initialized with dual DB support');
     });
 
 })();
