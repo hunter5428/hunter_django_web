@@ -605,7 +605,6 @@ def clear_db_session(request):
 
 
 # str_dashboard/views.py에 추가할 함수
-
 @login_required
 @require_POST
 @require_db_connection
@@ -624,10 +623,10 @@ def query_ip_access_history(request, oracle_conn=None):
     logger.info(f"Querying IP access history - MID: {mem_id}, period: {start_date} ~ {end_date}")
     
     try:
-        # ip_access_history.sql 실행
+        # ip_connection_history.sql 실행 (파일명 수정)
         result = execute_query_with_error_handling(
             oracle_conn=oracle_conn,
-            sql_filename='ip_access_history.sql',
+            sql_filename='ip_connection_history.sql',  # 실제 파일명으로 수정
             bind_params={
                 ':mem_id': '?',
                 ':start_date': '?', 
@@ -637,7 +636,20 @@ def query_ip_access_history(request, oracle_conn=None):
         )
         
         if result.get('success'):
-            logger.info(f"IP access history query successful - found {len(result.get('rows', []))} records")
+            # 해외 접속 건수 로깅
+            rows = result.get('rows', [])
+            columns = result.get('columns', [])
+            
+            if rows and columns:
+                country_idx = columns.index('국가한글명') if '국가한글명' in columns else -1
+                if country_idx >= 0:
+                    foreign_count = sum(1 for row in rows 
+                                      if row[country_idx] and 
+                                      row[country_idx] not in ['대한민국', '한국'])
+                    if foreign_count > 0:
+                        logger.info(f"Found {foreign_count} foreign IP access records out of {len(rows)} total")
+            
+            logger.info(f"IP access history query successful - found {len(rows)} records")
         else:
             logger.error(f"IP access history query failed: {result.get('message')}")
         
@@ -649,3 +661,10 @@ def query_ip_access_history(request, oracle_conn=None):
             'success': False,
             'message': f'IP 조회 중 오류: {e}'
         })
+    
+
+
+
+
+
+

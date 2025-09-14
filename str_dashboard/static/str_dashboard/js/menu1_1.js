@@ -400,6 +400,7 @@
             }
         }
 
+        // menu1_1.js의 extractTransactionPeriod 메서드 개선 버전
         extractTransactionPeriod() {
             // Alert 데이터에서 TRAN_STRT와 TRAN_END 컬럼 찾기
             if (!this.alertData) {
@@ -423,25 +424,38 @@
                 const startDate = row[idxTranStart];
                 const endDate = row[idxTranEnd];
                 
-                if (startDate) {
+                // 날짜 유효성 검증
+                if (startDate && /^\d{4}-\d{2}-\d{2}/.test(startDate)) {
                     if (!minStart || startDate < minStart) {
                         minStart = startDate;
                     }
                 }
                 
-                if (endDate) {
+                if (endDate && /^\d{4}-\d{2}-\d{2}/.test(endDate)) {
                     if (!maxEnd || endDate > maxEnd) {
                         maxEnd = endDate;
                     }
                 }
             });
             
-            // 날짜 형식 변환
+            // 날짜 형식 변환 (타임스탬프 형식 확인)
             if (minStart) {
-                minStart = minStart + ' 00:00:00.000000000';
+                // 이미 시간이 포함되어 있는지 확인
+                if (minStart.includes(' ')) {
+                    // 이미 날짜시간 형식인 경우 그대로 사용
+                    minStart = minStart;
+                } else {
+                    // 날짜만 있는 경우 시간 추가
+                    minStart = minStart + ' 00:00:00.000000000';
+                }
             }
+            
             if (maxEnd) {
-                maxEnd = maxEnd + ' 23:59:59.999999999';
+                if (maxEnd.includes(' ')) {
+                    maxEnd = maxEnd;
+                } else {
+                    maxEnd = maxEnd + ' 23:59:59.999999999';
+                }
             }
             
             console.log(`Extracted transaction period: ${minStart} ~ ${maxEnd}`);

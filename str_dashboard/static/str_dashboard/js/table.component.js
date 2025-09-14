@@ -762,25 +762,44 @@
         }
     }
 
-    // IP 접속 이력 테이블 클래스 추가 (다른 테이블 클래스들 다음에)
     class IPAccessHistoryTable extends TableComponent {
         constructor(containerId) {
             super(containerId, {
-                className: 'table ip-access-history-table',
+                className: 'table ip-history-table',
                 emptyMessage: 'IP 접속 이력이 없습니다.',
                 showHeader: true,
+                // 해외 IP 행 강조 (회색 배경)
+                highlightRow: (row, index) => {
+                    // 국가한글명 컬럼 인덱스 찾기
+                    const countryCol = this.columns?.indexOf('국가한글명');
+                    if (countryCol >= 0 && row[countryCol]) {
+                        const country = String(row[countryCol]).trim();
+                        // 대한민국이 아닌 경우 강조
+                        return country !== '대한민국' && country !== '한국' && country !== '';
+                    }
+                    return false;
+                },
+                highlightClass: 'rep-row',  // Alert 테이블과 동일한 클래스 사용
                 formatters: {
                     '접속일시': (value) => {
                         // 날짜 포맷팅
-                        return value ? `<span style="white-space: nowrap;">${value}</span>` : '-';
+                        return value ? value : '-';
                     },
                     'IP주소': (value) => {
-                        // IP 주소 강조
-                        return value ? `<code style="color: #4fc3f7;">${value}</code>` : '-';
+                        // IP 주소는 그대로 표시
+                        return value || '-';
                     },
                     '채널': (value) => {
-                        // 채널 타입 뱃지
-                        return value ? `<span class="channel-badge">${value}</span>` : '-';
+                        // 채널 타입 표시
+                        return value || '-';
+                    },
+                    '국가한글명': (value) => {
+                        // 국가명 표시 (해외는 강조될 예정)
+                        if (!value || value === '대한민국' || value === '한국') {
+                            return value || '-';
+                        }
+                        // 해외 국가는 굵게 표시
+                        return `<strong>${value}</strong>`;
                     }
                 }
             });
@@ -1096,6 +1115,20 @@
             if (visibleIndices.length > 0) {
                 const filteredColumns = visibleIndices.map(idx => columns[idx]);
                 const filteredRows = rows.map(row => visibleIndices.map(idx => row[idx]));
+                
+                // 해외 접속 건수 계산 (로깅용)
+                const countryIdx = columns.indexOf('국가한글명');
+                if (countryIdx >= 0) {
+                    const foreignAccess = rows.filter(row => {
+                        const country = row[countryIdx];
+                        return country && country !== '대한민국' && country !== '한국';
+                    }).length;
+                    
+                    if (foreignAccess > 0) {
+                        console.log(`Found ${foreignAccess} foreign IP access records (highlighted)`);
+                    }
+                }
+                
                 table.setData(filteredColumns, filteredRows);
             } else {
                 // 모든 컬럼 표시
