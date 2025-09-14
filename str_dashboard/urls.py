@@ -33,4 +33,8 @@ urlpatterns = [
     
     # 개인 관련인(내부입출금) 조회 API
     path('api/query_person_related_summary/', views.query_person_related_summary, name='query_person_related_summary'),
+    
+    # IP 접속 내역 조회 API
+    path('api/query_ip_access_history/', views.query_ip_access_history, name='query_ip_access_history'),
+
 ]

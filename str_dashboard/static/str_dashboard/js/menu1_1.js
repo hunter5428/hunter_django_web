@@ -267,6 +267,26 @@
                             customerType
                         );
                     }
+                    // MID 추출 (통합 정보에서)
+                    let memId = null;
+                    if (customerData.rows && customerData.rows.length > 0) {
+                        const midIdx = customerData.columns.indexOf('MID');
+                        if (midIdx >= 0) {
+                            memId = customerData.rows[0][midIdx];
+                        }
+                    }
+                    
+                    // MID가 있고 거래 기간이 있으면 IP 접속 이력 조회
+                    if (memId) {
+                        const tranPeriod = this.extractTransactionPeriod();
+                        if (tranPeriod.start && tranPeriod.end) {
+                            console.log(`Fetching IP access history for MID: ${memId}`);
+                            await this.fetchIPAccessHistory(memId, tranPeriod);
+                        }
+                    }
+
+
+
                 } else {
                     console.error('Customer info query failed:', customerData.message);
                     window.renderCustomerUnifiedSection([], []);
@@ -276,6 +296,43 @@
                 window.renderCustomerUnifiedSection([], []);
             }
         }
+
+        // 3. AlertSearchManager 클래스에 새 메서드 추가
+        async fetchIPAccessHistory(memId, tranPeriod) {
+            try {
+                // 날짜 형식 변환 (YYYY-MM-DD 형식으로)
+                const startDate = tranPeriod.start.split(' ')[0];
+                const endDate = tranPeriod.end.split(' ')[0];
+                
+                const response = await fetch(window.URLS.query_ip_access_history, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: new URLSearchParams({
+                        mem_id: String(memId),
+                        start_date: startDate,
+                        end_date: endDate
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    console.log(`IP access history loaded - rows: ${result.rows?.length}`);
+                    window.renderIPAccessHistorySection(result.columns || [], result.rows || []);
+                } else {
+                    console.error('IP access history query failed:', result.message);
+                    window.renderIPAccessHistorySection([], []);
+                }
+            } catch (error) {
+                console.error('IP access history fetch failed:', error);
+                window.renderIPAccessHistorySection([], []);
+            }
+        }
+        
+
 
         async fetchCorpRelatedPersons(custId) {
             try {

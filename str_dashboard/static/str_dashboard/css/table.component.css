@@ -239,6 +239,34 @@
     white-space: nowrap;
 }
 
+/* Rule 설명 테이블 */
+.rule-desc-table td {
+    vertical-align: top;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.rule-desc-table td:first-child {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* IP 조회내역 테이블 */
+.ip-history-table {
+    font-size: 13px;
+}
+
+.ip-history-table th {
+    white-space: nowrap;
+    font-size: 12px;
+}
+
+.ip-history-table td {
+    word-break: break-word;
+    vertical-align: top;
+}
+
+
 /* ==================== 동일_차명의심_상세 정보 테이블 스타일 ==================== */
 .duplicate-persons-table {
     font-size: 13px;
@@ -488,3 +516,4 @@
         display: none;
     }
 }
+

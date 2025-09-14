@@ -762,6 +762,32 @@
         }
     }
 
+    // IP 접속 이력 테이블 클래스 추가 (다른 테이블 클래스들 다음에)
+    class IPAccessHistoryTable extends TableComponent {
+        constructor(containerId) {
+            super(containerId, {
+                className: 'table ip-access-history-table',
+                emptyMessage: 'IP 접속 이력이 없습니다.',
+                showHeader: true,
+                formatters: {
+                    '접속일시': (value) => {
+                        // 날짜 포맷팅
+                        return value ? `<span style="white-space: nowrap;">${value}</span>` : '-';
+                    },
+                    'IP주소': (value) => {
+                        // IP 주소 강조
+                        return value ? `<code style="color: #4fc3f7;">${value}</code>` : '-';
+                    },
+                    '채널': (value) => {
+                        // 채널 타입 뱃지
+                        return value ? `<span class="channel-badge">${value}</span>` : '-';
+                    }
+                }
+            });
+        }
+    }
+
+
     /**
      * 섹션 토글 기능 초기화
      */
@@ -1050,7 +1076,37 @@
             </div>
         `;
     };
-    
+
+    // 전역 렌더링 함수 추가 (다른 render 함수들 다음에)
+    window.renderIPAccessHistorySection = function(columns, rows) {
+        const section = document.getElementById('section_ip_access_history');
+        if (section) {
+            section.style.display = 'block';
+            const table = new IPAccessHistoryTable('result_table_ip_access_history');
+            
+            // 필요한 컬럼만 표시 (선택적)
+            const visibleColumns = [
+                '접속일시', '국가한글명', '채널', 'IP주소', 
+                '접속위치', 'OS정보', '브라우저정보'
+            ];
+            
+            // 보이는 컬럼에 해당하는 인덱스 찾기
+            const visibleIndices = visibleColumns.map(col => columns.indexOf(col)).filter(idx => idx >= 0);
+            
+            if (visibleIndices.length > 0) {
+                const filteredColumns = visibleIndices.map(idx => columns[idx]);
+                const filteredRows = rows.map(row => visibleIndices.map(idx => row[idx]));
+                table.setData(filteredColumns, filteredRows);
+            } else {
+                // 모든 컬럼 표시
+                table.setData(columns, rows);
+            }
+            
+            table.render();
+        }
+    };
+
+
     // HTML 이스케이프 헬퍼 함수
     function escapeHtml(text) {
         const div = document.createElement('div');

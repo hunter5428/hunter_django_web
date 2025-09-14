@@ -112,6 +112,7 @@
 <script>
 // 전역 설정
 window.RULE_OBJ_MAP = {{ rule_obj_map_json|safe }};
+
 window.URLS = {
     test_connection: "{% url 'test_oracle_connection' %}",
     query_alert: "{% url 'query_alert_info' %}",
@@ -119,7 +120,8 @@ window.URLS = {
     rule_history: "{% url 'rule_history_search' %}",
     query_duplicate_unified: "{% url 'query_duplicate_unified' %}",
     query_corp_related_persons: "{% url 'query_corp_related_persons' %}",
-    query_person_related_summary: "{% url 'query_person_related_summary' %}"
+    query_person_related_summary: "{% url 'query_person_related_summary' %}",
+    query_ip_access_history: "{% url 'query_ip_access_history' %}" 
 };
 </script>
 

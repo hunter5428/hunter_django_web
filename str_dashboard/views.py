@@ -601,3 +601,51 @@ def clear_db_session(request):
         if key in request.session:
             del request.session[key]
     logger.info("Database session cleared")
+
+
+
+# str_dashboard/views.py에 추가할 함수
+
+@login_required
+@require_POST
+@require_db_connection
+def query_ip_access_history(request, oracle_conn=None):
+    """IP 접속 이력 조회"""
+    mem_id = request.POST.get('mem_id', '').strip()
+    start_date = request.POST.get('start_date', '').strip()
+    end_date = request.POST.get('end_date', '').strip()
+    
+    if not all([mem_id, start_date, end_date]):
+        return JsonResponse({
+            'success': False,
+            'message': 'Missing required parameters: mem_id, start_date, end_date'
+        })
+    
+    logger.info(f"Querying IP access history - MID: {mem_id}, period: {start_date} ~ {end_date}")
+    
+    try:
+        # ip_access_history.sql 실행
+        result = execute_query_with_error_handling(
+            oracle_conn=oracle_conn,
+            sql_filename='ip_access_history.sql',
+            bind_params={
+                ':mem_id': '?',
+                ':start_date': '?', 
+                ':end_date': '?'
+            },
+            query_params=[mem_id, start_date, end_date]
+        )
+        
+        if result.get('success'):
+            logger.info(f"IP access history query successful - found {len(result.get('rows', []))} records")
+        else:
+            logger.error(f"IP access history query failed: {result.get('message')}")
+        
+        return JsonResponse(result)
+        
+    except Exception as e:
+        logger.exception(f"Error in query_ip_access_history: {e}")
+        return JsonResponse({
+            'success': False,
+            'message': f'IP 조회 중 오류: {e}'
+        })
