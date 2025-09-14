@@ -1,6 +1,6 @@
 # str_dashboard/redshift_utils.py
 """
-Redshift 데이터베이스 연결 및 쿼리 실행 유틸리티
+Redshift 데이터베이스 연결 및 쿼리 실행 유틸리티 (읽기 전용)
 """
 import os
 import logging
@@ -29,7 +29,7 @@ class RedshiftQueryError(Exception):
 
 
 class RedshiftConnection:
-    """Redshift 데이터베이스 연결 관리 클래스"""
+    """Redshift 데이터베이스 연결 관리 클래스 (읽기 전용)"""
     
     def __init__(self, host: str, port: str, dbname: str, username: str, password: str):
         """
@@ -68,11 +68,12 @@ class RedshiftConnection:
             f"dbname={self.dbname} "
             f"user={self.username} "
             f"password={self.password} "
-            f"sslmode=require"  # Redshift는 SSL 연결 권장
+            f"sslmode=require "
+            f"options='-c default_transaction_read_only=on'"  # 읽기 전용 설정
         )
     
     def connect(self):
-        """데이터베이스 연결"""
+        """데이터베이스 연결 (읽기 전용)"""
         try:
             self._connection = psycopg2.connect(
                 host=self.host,
@@ -81,9 +82,12 @@ class RedshiftConnection:
                 user=self.username,
                 password=self.password,
                 sslmode='require',
-                connect_timeout=10
+                connect_timeout=10,
+                options='-c default_transaction_read_only=on'  # 읽기 전용 설정
             )
-            logger.debug("Redshift connected successfully")
+            # autocommit 활성화 (읽기 전용이므로 트랜잭션 불필요)
+            self._connection.autocommit = True
+            logger.debug("Redshift connected successfully (read-only mode)")
             return self._connection
         except psycopg2.OperationalError as e:
             error_msg = self._parse_redshift_error(str(e))
@@ -106,17 +110,18 @@ class RedshiftConnection:
     
     @contextmanager
     def get_cursor(self, cursor_factory=None):
-        """커서 컨텍스트 매니저"""
+        """커서 컨텍스트 매니저 (읽기 전용)"""
         conn = None
         cursor = None
         try:
             conn = self.connect()
+            # 읽기 전용 트랜잭션 설정 (이미 연결 시 설정했지만 명시적으로)
+            conn.set_session(readonly=True, autocommit=True)
             cursor = conn.cursor(cursor_factory=cursor_factory)
             yield cursor
-            conn.commit()
+            # commit 불필요 (읽기 전용 + autocommit)
         except Exception as e:
-            if conn:
-                conn.rollback()
+            # rollback 불필요 (읽기 전용 + autocommit)
             raise
         finally:
             if cursor:
@@ -128,38 +133,61 @@ class RedshiftConnection:
     
     def execute_query(self, sql: str, params: Optional[List] = None) -> Tuple[List[str], List[List]]:
         """
-        쿼리 실행 및 결과 반환
+        쿼리 실행 및 결과 반환 (읽기 전용 - SELECT만 허용)
         
         Returns:
             (columns, rows) 튜플
         """
         params = params or []
         
-        with self.get_cursor() as cursor:
-            try:
-                cursor.execute(sql, params)
+        # SELECT 쿼리만 허용
+        sql_upper = sql.strip().upper()
+        if not sql_upper.startswith('SELECT') and not sql_upper.startswith('WITH'):
+            raise RedshiftQueryError("읽기 전용 연결입니다. SELECT 쿼리만 실행 가능합니다.")
+        
+        conn = None
+        cursor = None
+        try:
+            conn = self.connect()
+            cursor = conn.cursor()
+            cursor.execute(sql, params)
+            
+            # SELECT 쿼리 결과 반환
+            if cursor.description:
+                cols = [desc[0] for desc in cursor.description]
+                rows = cursor.fetchall()
+                return cols, rows
+            else:
+                return [], []
                 
-                # SELECT 쿼리인 경우 결과 반환
-                if cursor.description:
-                    cols = [desc[0] for desc in cursor.description]
-                    rows = cursor.fetchall()
-                    return cols, rows
-                else:
-                    # INSERT/UPDATE/DELETE 등의 경우
-                    return [], []
-                    
-            except psycopg2.Error as e:
-                logger.exception(f"Redshift query execution failed: {e}")
-                raise RedshiftQueryError(f"쿼리 실행 실패: {e}")
+        except psycopg2.Error as e:
+            logger.exception(f"Redshift query execution failed: {e}")
+            raise RedshiftQueryError(f"쿼리 실행 실패: {e}")
+        finally:
+            if cursor:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def execute_query_dict(self, sql: str, params: Optional[List] = None) -> List[Dict[str, Any]]:
         """
-        쿼리 실행 및 딕셔너리 형태로 결과 반환
+        쿼리 실행 및 딕셔너리 형태로 결과 반환 (읽기 전용)
         
         Returns:
             딕셔너리 리스트
         """
         params = params or []
+        
+        # SELECT 쿼리만 허용
+        sql_upper = sql.strip().upper()
+        if not sql_upper.startswith('SELECT') and not sql_upper.startswith('WITH'):
+            raise RedshiftQueryError("읽기 전용 연결입니다. SELECT 쿼리만 실행 가능합니다.")
         
         with self.get_cursor(cursor_factory=RealDictCursor) as cursor:
             try:
@@ -175,12 +203,16 @@ class RedshiftConnection:
                 raise RedshiftQueryError(f"쿼리 실행 실패: {e}")
     
     def test_connection(self) -> bool:
-        """연결 테스트"""
+        """연결 테스트 (읽기 전용)"""
         try:
-            with self.get_cursor() as cursor:
-                cursor.execute("SELECT 1")
-                result = cursor.fetchone()
-                return result[0] == 1
+            conn = self.connect()
+            cursor = conn.cursor()
+            # 간단한 읽기 전용 테스트 쿼리
+            cursor.execute("SELECT 1")
+            result = cursor.fetchone()
+            cursor.close()
+            self.close()
+            return result[0] == 1
         except Exception as e:
             logger.error(f"Redshift connection test failed: {e}")
             return False
@@ -199,9 +231,11 @@ class RedshiftConnection:
         elif 'timeout' in error_lower:
             return '연결 실패: 연결 시간이 초과되었습니다.'
         elif 'permission denied' in error_lower:
-            return '연결 실패: 권한이 없습니다.'
+            return '연결 실패: 권한이 없습니다. 읽기 권한을 확인하세요.'
         elif 'ssl' in error_lower:
             return '연결 실패: SSL 연결 오류가 발생했습니다.'
+        elif 'read-only' in error_lower or 'readonly' in error_lower:
+            return '연결 실패: 읽기 전용 권한 설정 오류입니다.'
         else:
             return f'연결 실패: {error_text}'
 
@@ -240,12 +274,20 @@ def execute_redshift_query_with_error_handling(
     params: Optional[List] = None
 ) -> Dict[str, Any]:
     """
-    Redshift 쿼리 실행 및 에러 처리를 포함한 헬퍼 함수
+    Redshift 쿼리 실행 및 에러 처리를 포함한 헬퍼 함수 (읽기 전용)
     
     Returns:
         {'success': True/False, 'columns': [...], 'rows': [...], 'message': '...'}
     """
     try:
+        # SELECT 쿼리 검증
+        sql_upper = sql.strip().upper()
+        if not sql_upper.startswith('SELECT') and not sql_upper.startswith('WITH'):
+            return {
+                'success': False,
+                'message': '읽기 전용 연결입니다. SELECT 쿼리만 실행 가능합니다.'
+            }
+        
         cols, rows = redshift_conn.execute_query(sql, params)
         
         return {
