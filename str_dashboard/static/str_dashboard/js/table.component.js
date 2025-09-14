@@ -1101,6 +1101,11 @@
         const section = document.getElementById('section_ip_access_history');
         if (section) {
             section.style.display = 'block';
+            // IP 접속 이력은 기본적으로 접힌 상태로 시작
+            if (!section.classList.contains('collapsed')) {
+                section.classList.add('collapsed');
+            }
+            
             const table = new IPAccessHistoryTable('result_table_ip_access_history');
             
             // 필요한 컬럼만 표시 (선택적)
@@ -1138,7 +1143,6 @@
             table.render();
         }
     };
-
 
     // HTML 이스케이프 헬퍼 함수
     function escapeHtml(text) {
