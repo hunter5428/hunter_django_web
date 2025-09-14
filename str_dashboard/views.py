@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 from typing import Optional, Dict, Any
 from pathlib import Path
+from .orderbook_analyzer import OrderbookAnalyzer
 
 
 from .db_utils import (
@@ -1079,6 +1080,123 @@ def get_orderbook_dataframe(cache_key: str) -> Optional[pd.DataFrame]:
 
 
 
+@login_required
+@require_POST
+def analyze_cached_orderbook(request):
+    """
+    캐시된 Orderbook 데이터를 분석하여 구간별 요약 생성
+    """
+    cache_key = request.POST.get('cache_key', '').strip()
+    
+    if not cache_key:
+        return JsonResponse({
+            'success': False,
+            'message': 'cache_key is required'
+        })
+    
+    # 캐시에서 DataFrame 가져오기
+    df = get_orderbook_dataframe(cache_key)
+    
+    if df is None:
+        return JsonResponse({
+            'success': False,
+            'message': f'캐시된 데이터를 찾을 수 없습니다: {cache_key}'
+        })
+    
+    try:
+        # 분석기 생성 및 실행
+        analyzer = OrderbookAnalyzer(df)
+        
+        # 구간별 분석
+        summary_df = analyzer.analyze_segments()
+        
+        # 텍스트 요약 생성
+        text_summary = analyzer.generate_text_summary()
+        
+        # 패턴 분석
+        patterns = analyzer.get_pattern_analysis()
+        
+        # HTML 테이블 생성
+        html_table = analyzer.export_to_html_table()
+        
+        # 결과를 캐시에 추가 저장
+        if cache_key in ORDERBOOK_CACHE:
+            ORDERBOOK_CACHE[cache_key]['analysis'] = {
+                'summary_df': summary_df,
+                'text_summary': text_summary,
+                'patterns': patterns,
+                'html_table': html_table,
+                'analyzed_at': datetime.now()
+            }
+        
+        logger.info(f"Orderbook analysis completed for {cache_key}: {len(summary_df)} segments")
+        
+        # DataFrame을 JSON으로 변환
+        summary_json = summary_df.to_dict('records') if not summary_df.empty else []
+        
+        return JsonResponse({
+            'success': True,
+            'cache_key': cache_key,
+            'segments_count': len(summary_df),
+            'summary_data': summary_json,
+            'text_summary': text_summary,
+            'patterns': patterns,
+            'html_table': html_table
+        })
+        
+    except Exception as e:
+        logger.exception(f"Error analyzing orderbook: {e}")
+        return JsonResponse({
+            'success': False,
+            'message': f'분석 중 오류 발생: {str(e)}'
+        })
+
+
+@login_required
+def get_orderbook_summary(request):
+    """
+    캐시된 Orderbook의 분석 결과 조회
+    """
+    cache_key = request.GET.get('cache_key', '').strip()
+    
+    if not cache_key:
+        return JsonResponse({
+            'success': False,
+            'message': 'cache_key is required'
+        })
+    
+    if cache_key not in ORDERBOOK_CACHE:
+        return JsonResponse({
+            'success': False,
+            'message': f'캐시된 데이터를 찾을 수 없습니다: {cache_key}'
+        })
+    
+    cache_data = ORDERBOOK_CACHE[cache_key]
+    
+    # 분석 결과가 있는지 확인
+    if 'analysis' not in cache_data:
+        return JsonResponse({
+            'success': False,
+            'message': '분석이 수행되지 않았습니다. 먼저 분석을 실행하세요.',
+            'analyzed': False
+        })
+    
+    analysis = cache_data['analysis']
+    summary_df = analysis['summary_df']
+    
+    return JsonResponse({
+        'success': True,
+        'cache_key': cache_key,
+        'user_id': cache_data['user_id'],
+        'period': f"{cache_data['start_date']} ~ {cache_data['end_date']}",
+        'rows_count': cache_data['rows_count'],
+        'segments_count': len(summary_df),
+        'text_summary': analysis['text_summary'],
+        'patterns': analysis['patterns'],
+        'html_table': analysis['html_table'],
+        'analyzed_at': analysis['analyzed_at'].strftime('%Y-%m-%d %H:%M:%S'),
+        'analyzed': True
+    })
 
 
 
