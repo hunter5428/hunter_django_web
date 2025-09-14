@@ -574,9 +574,7 @@
         }
 
         async fetchRedshiftOrderbook(memId, tranPeriod) {
-            """
-            Redshift에서 Orderbook 데이터 조회 및 캐싱
-            """
+
             // Redshift 연결 확인
             if (!window.dualDBManager || !window.dualDBManager.isRedshiftConnected()) {
                 console.log('Redshift not connected, skipping orderbook query');
@@ -650,9 +648,6 @@
         }
 
         showOrderbookStatus(message, type = 'info') {
-            """
-            Orderbook 조회 상태 메시지 표시
-            """
             // 상태 표시 영역이 없으면 생성
             let statusDiv = document.getElementById('orderbook-status');
             if (!statusDiv) {

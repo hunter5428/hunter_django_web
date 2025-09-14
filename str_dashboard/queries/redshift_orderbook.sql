@@ -1,7 +1,3 @@
--- str_dashboard/queries/redshift_orderbook.sql
--- 가상자산 거래 원장 조회
--- 파라미터: user_id, start_time, end_time
-
 SELECT 
     user_id,
     market_nm,
