@@ -14,6 +14,104 @@
         return parts.length === 2 ? decodeURIComponent(parts.pop().split(';').shift()) : undefined;
     };
 
+
+    // ==================== TOML 저장 관리 ====================
+    class TomlExportManager {
+        constructor() {
+            this.collectedData = {};
+            this.init();
+        }
+
+        init() {
+            // TOML 저장 버튼 이벤트
+            const tomlBtn = document.getElementById('toml_save_btn');
+            if (tomlBtn) {
+                tomlBtn.addEventListener('click', () => this.showConfigModal());
+            }
+            
+            // 모달 이벤트
+            this.setupModalEvents();
+        }
+
+        setupModalEvents() {
+            const modal = document.getElementById('toml-config-modal');
+            if (!modal) return;
+            
+            // 취소 버튼
+            const cancelBtn = modal.querySelector('.toml-cancel-btn');
+            if (cancelBtn) {
+                cancelBtn.addEventListener('click', () => this.closeModal());
+            }
+            
+            // 다운로드 버튼
+            const downloadBtn = modal.querySelector('.toml-download-btn');
+            if (downloadBtn) {
+                downloadBtn.addEventListener('click', () => this.downloadToml());
+            }
+            
+            // 모달 외부 클릭
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) this.closeModal();
+            });
+        }
+
+        showConfigModal() {
+            const modal = document.getElementById('toml-config-modal');
+            if (modal) {
+                modal.classList.add('show');
+            }
+        }
+
+        closeModal() {
+            const modal = document.getElementById('toml-config-modal');
+            if (modal) {
+                modal.classList.remove('show');
+            }
+        }
+
+        async downloadToml() {
+            const tomlBtn = document.getElementById('toml_save_btn');
+            if (tomlBtn) {
+                tomlBtn.disabled = true;
+                tomlBtn.textContent = '처리 중...';
+            }
+            
+            try {
+                // 데이터 준비 요청
+                const response = await fetch(window.URLS.prepare_toml_data, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // 다운로드 실행
+                    window.location.href = window.URLS.download_toml;
+                    
+                    setTimeout(() => {
+                        this.closeModal();
+                        alert('TOML 파일이 다운로드되었습니다.');
+                    }, 1000);
+                } else {
+                    alert('TOML 데이터 준비 실패: ' + result.message);
+                }
+            } catch (error) {
+                console.error('TOML export error:', error);
+                alert('TOML 저장 중 오류가 발생했습니다.');
+            } finally {
+                if (tomlBtn) {
+                    tomlBtn.disabled = false;
+                    tomlBtn.textContent = 'TOML 저장';
+                }
+            }
+        }
+    }
+
+
     // ==================== API 호출 모듈 ====================
     class APIClient {
         constructor(baseHeaders) {
@@ -275,9 +373,22 @@
                 // 데이터 처리
                 const processedData = DataProcessor.processAlertData(cols, rows, alertId);
                 this.state.setAlertData({ cols, rows, ...processedData });
+                
+                this.saveToSession('current_alert_data', {
+                    alert_id: alertId,
+                    cols, 
+                    rows, 
+                    ...processedData
+                });
+                this.saveToSession('current_alert_id', alertId);
 
                 // 2. 모든 섹션 렌더링
                 await this.renderAllSections();
+                // TOML 저장 버튼 표시
+                const tomlBtn = document.getElementById('toml_save_btn');
+                if (tomlBtn) {
+                    tomlBtn.style.display = 'inline-flex';
+                }
                 
             } catch (error) {
                 console.error('Alert search error:', error);
@@ -319,6 +430,11 @@
                 });
                 
                 if (data.success) {
+                    // 세션에 저장 (TOML 저장용)
+                    this.saveToSession('current_customer_data', {
+                        columns: data.columns || [],
+                        rows: data.rows || []
+                    });
                     // 고객 정보 렌더링
                     window.TableRenderer.renderCustomerUnified(data.columns || [], data.rows || []);
                     
@@ -367,12 +483,35 @@
             }
         }
 
+        saveToSession(key, data) {
+            // 서버 세션에 저장 (비동기 처리, 에러는 무시)
+            fetch('/api/save_to_session/', {  // URL은 나중에 추가할 예정
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: new URLSearchParams({
+                    key: key,
+                    data: JSON.stringify(data)
+                })
+            }).catch(error => {
+                console.error('Session save error:', error);
+            });
+        }
+
+
         async fetchRuleHistory(canonicalIds) {
             try {
                 const ruleKey = canonicalIds.slice().sort().join(',');
                 const data = await this.api.post(window.URLS.rule_history, { rule_key: ruleKey });
                 
                 if (data.success) {
+                    // 세션에 저장
+                    this.saveToSession('current_rule_history_data', {
+                        columns: data.columns || [],
+                        rows: data.rows || []
+                    });
                     window.TableRenderer.renderRuleHistory(
                         data.columns || [], 
                         data.rows || [],
@@ -536,7 +675,8 @@
             if (window.TableRenderer) {
                 clearInterval(initInterval);
                 window.alertManager = new AlertSearchManager();
-                
+                window.tomlExporter = new TomlExportManager();  // 새로 추가
+
                 // 초기 상태: 섹션 숨김
                 UIManager.hideAllSections();
                 

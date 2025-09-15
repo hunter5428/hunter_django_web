@@ -7,6 +7,8 @@
 <link rel="stylesheet" href="{% static 'str_dashboard/css/customer_unified.css' %}">
 <link rel="stylesheet" href="{% static 'str_dashboard/css/orderbook.css' %}">
 <link rel="stylesheet" href="{% static 'str_dashboard/css/alert_orderbook.css' %}">
+<link rel="stylesheet" href="{% static 'str_dashboard/css/alert_orderbook.css' %}">
+<link rel="stylesheet" href="{% static 'str_dashboard/css/stds_summary.css' %}"> 
 <style>
 /* 듀얼 DB 연결 모달 스타일 */
 .dual-db-modal .modal {
@@ -158,6 +160,16 @@
     <span class="label-chip">ALERT ID</span>
     <input id="alert_id_input" type="text" class="form-input" placeholder="ALERT ID를 입력하세요">
     <button class="btn" id="alert_id_search_btn">조회</button>
+    <button class="btn toml-save-btn" id="toml_save_btn" style="display: none;">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+        </svg>
+        TOML 저장
+    </button>
 </div>
 
 <!-- 기존 섹션들 그대로 유지 -->
@@ -289,6 +301,69 @@
         </div>
     </div>
 </div>
+
+<!-- TOML 설정 모달 -->
+<div class="toml-config-modal" id="toml-config-modal">
+    <div class="toml-config-content">
+        <div class="toml-config-header">
+            <div class="toml-config-title">TOML 데이터 저장</div>
+            <div class="toml-config-desc">화면에 표시된 데이터를 TOML 형식으로 저장합니다.</div>
+        </div>
+        
+        <div class="toml-data-selection">
+            <div class="toml-selection-group">
+                <div class="toml-selection-title">저장할 데이터 선택</div>
+                
+                <div class="toml-checkbox-item">
+                    <input type="checkbox" id="toml-alert-info" checked disabled>
+                    <label class="toml-checkbox-label" for="toml-alert-info">Alert 정보</label>
+                    <span class="toml-checkbox-desc">필수</span>
+                </div>
+                
+                <div class="toml-checkbox-item">
+                    <input type="checkbox" id="toml-customer" checked disabled>
+                    <label class="toml-checkbox-label" for="toml-customer">고객 정보</label>
+                    <span class="toml-checkbox-desc">필수</span>
+                </div>
+                
+                <div class="toml-checkbox-item">
+                    <input type="checkbox" id="toml-rule" checked disabled>
+                    <label class="toml-checkbox-label" for="toml-rule">Rule 정보</label>
+                    <span class="toml-checkbox-desc">필수</span>
+                </div>
+                
+                <div class="toml-checkbox-item">
+                    <input type="checkbox" id="toml-orderbook" checked disabled>
+                    <label class="toml-checkbox-label" for="toml-orderbook">Orderbook 분석</label>
+                    <span class="toml-checkbox-desc">필수</span>
+                </div>
+                
+                <div class="toml-checkbox-item">
+                    <input type="checkbox" id="toml-stds" checked disabled>
+                    <label class="toml-checkbox-label" for="toml-stds">STDS_DTM 요약</label>
+                    <span class="toml-checkbox-desc">필수</span>
+                </div>
+            </div>
+            
+            <div class="toml-selection-group" style="margin-top: 15px;">
+                <div class="toml-selection-title">설정</div>
+                <div class="toml-checkbox-item">
+                    <input type="checkbox" id="toml-mask-sensitive" checked>
+                    <label class="toml-checkbox-label" for="toml-mask-sensitive">민감 정보 마스킹</label>
+                    <span class="toml-checkbox-desc">실명번호, 이메일 등</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="toml-modal-actions">
+            <button class="toml-cancel-btn">취소</button>
+            <button class="toml-download-btn">다운로드</button>
+        </div>
+    </div>
+</div>
+
+
+
 {% endblock %}
 
 {% block extra_js %}
@@ -312,7 +387,14 @@ window.URLS = {
     clear_orderbook_cache: "{% url 'clear_orderbook_cache' %}",
     analyze_cached_orderbook: "{% url 'analyze_cached_orderbook' %}",
     get_orderbook_summary: "{% url 'get_orderbook_summary' %}",
-    analyze_alert_orderbook: "{% url 'analyze_alert_orderbook' %}"
+    analyze_alert_orderbook: "{% url 'analyze_alert_orderbook' %}",
+    // TOML Export APIs (추가)
+    prepare_toml_data: "{% url 'prepare_toml_data' %}",
+    download_toml: "{% url 'download_toml' %}",
+    save_to_session: "{% url 'save_to_session' %}",
+    
+    // STDS_DTM Analysis API (추가)
+    analyze_stds_dtm_orderbook: "{% url 'analyze_stds_dtm_orderbook' %}"
 };
 </script>
 

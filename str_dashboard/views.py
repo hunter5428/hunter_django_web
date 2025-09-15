@@ -1283,3 +1283,245 @@ def analyze_alert_orderbook(request):
             'success': False,
             'message': f'분석 중 오류: {str(e)}'
         })
+    
+# ========== 파일 끝부분에 추가 ==========
+
+from .toml_exporter import toml_collector
+import tempfile
+from django.http import FileResponse
+
+@login_required
+@require_POST
+def prepare_toml_data(request):
+    """
+    화면에 렌더링된 데이터를 수집하여 TOML 형식으로 준비
+    """
+    try:
+        # 세션에서 데이터 수집
+        session_data = {
+            'alert_data': request.session.get('current_alert_data', {}),
+            'customer_data': request.session.get('current_customer_data', {}),
+            'corp_related_data': request.session.get('current_corp_related_data', {}),
+            'person_related_data': request.session.get('current_person_related_data', {}),
+            'rule_history_data': request.session.get('current_rule_history_data', {}),
+            'orderbook_analysis': request.session.get('current_orderbook_analysis', {}),
+            'stds_dtm_summary': request.session.get('current_stds_dtm_summary', {})
+        }
+        
+        # TOML 데이터 수집
+        collected_data = toml_collector.collect_all_data(session_data)
+        
+        # 임시 파일에 저장
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False, encoding='utf-8') as tmp:
+            import toml
+            toml.dump(collected_data, tmp)
+            tmp_path = tmp.name
+        
+        # 세션에 임시 파일 경로 저장
+        request.session['toml_temp_path'] = tmp_path
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'TOML 데이터 준비 완료',
+            'data_count': len(collected_data.get('data', {})),
+            'selected_sections': toml_collector.data_selection
+        })
+        
+    except Exception as e:
+        logger.exception(f"Error preparing TOML data: {e}")
+        return JsonResponse({
+            'success': False,
+            'message': f'TOML 데이터 준비 실패: {str(e)}'
+        })
+
+
+@login_required
+def download_toml(request):
+    """
+    준비된 TOML 파일 다운로드
+    """
+    try:
+        tmp_path = request.session.get('toml_temp_path')
+        if not tmp_path or not Path(tmp_path).exists():
+            return JsonResponse({
+                'success': False,
+                'message': 'TOML 파일을 찾을 수 없습니다.'
+            })
+        
+        # Alert ID로 파일명 생성
+        alert_id = request.session.get('current_alert_id', 'unknown')
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'str_data_{alert_id}_{timestamp}.toml'
+        
+        # 파일 응답 생성
+        response = FileResponse(
+            open(tmp_path, 'rb'),
+            as_attachment=True,
+            filename=filename
+        )
+        
+        # 임시 파일 삭제 (다운로드 후)
+        def cleanup():
+            try:
+                Path(tmp_path).unlink()
+            except:
+                pass
+        
+        import atexit
+        atexit.register(cleanup)
+        
+        return response
+        
+    except Exception as e:
+        logger.exception(f"Error downloading TOML: {e}")
+        return JsonResponse({
+            'success': False,
+            'message': f'TOML 다운로드 실패: {str(e)}'
+        })
+
+
+@login_required
+@require_POST
+def analyze_stds_dtm_orderbook(request):
+    """
+    대표 ALERT의 STDS_DTM 날짜에 대한 Orderbook 요약
+    """
+    stds_date = request.POST.get('stds_date', '').strip()
+    cache_key = request.POST.get('cache_key', '').strip()
+    
+    if not all([stds_date, cache_key]):
+        return JsonResponse({
+            'success': False,
+            'message': 'Missing required parameters'
+        })
+    
+    # 캐시에서 DataFrame 가져오기
+    df = get_orderbook_dataframe(cache_key)
+    
+    if df is None:
+        return JsonResponse({
+            'success': False,
+            'message': f'캐시된 데이터를 찾을 수 없습니다: {cache_key}'
+        })
+    
+    try:
+        # STDS_DTM 날짜로 필터링
+        target_date = pd.to_datetime(stds_date).date()
+        df_filtered = df[pd.to_datetime(df['trade_date']).dt.date == target_date].copy()
+        
+        if df_filtered.empty:
+            return JsonResponse({
+                'success': True,
+                'date': stds_date,
+                'summary': {
+                    'total_records': 0,
+                    'message': '해당 날짜의 거래 데이터가 없습니다.'
+                }
+            })
+        
+        # 분석 실행
+        analyzer = OrderbookAnalyzer(df_filtered)
+        analyzer.analyze()
+        patterns = analyzer.get_pattern_analysis()
+        
+        # 종목별 상세 정리
+        summary = {
+            'date': stds_date,
+            'total_records': len(df_filtered),
+            'buy_amount': patterns.get('total_buy_amount', 0),
+            'buy_count': patterns.get('total_buy_count', 0),
+            'buy_details': [
+                {'ticker': t, 'amount': d['amount_krw'], 'count': d['count']}
+                for t, d in (patterns.get('buy_details', [])[:10])
+            ],
+            'sell_amount': patterns.get('total_sell_amount', 0),
+            'sell_count': patterns.get('total_sell_count', 0),
+            'sell_details': [
+                {'ticker': t, 'amount': d['amount_krw'], 'count': d['count']}
+                for t, d in (patterns.get('sell_details', [])[:10])
+            ],
+            'deposit_krw_amount': patterns.get('total_deposit_krw', 0),
+            'deposit_krw_count': patterns.get('total_deposit_krw_count', 0),
+            'withdraw_krw_amount': patterns.get('total_withdraw_krw', 0),
+            'withdraw_krw_count': patterns.get('total_withdraw_krw_count', 0),
+            'deposit_crypto_amount': patterns.get('total_deposit_crypto', 0),
+            'deposit_crypto_count': patterns.get('total_deposit_crypto_count', 0),
+            'deposit_crypto_details': [
+                {'ticker': t, 'amount': d['amount_krw'], 'count': d['count']}
+                for t, d in (patterns.get('deposit_crypto_details', [])[:10])
+            ],
+            'withdraw_crypto_amount': patterns.get('total_withdraw_crypto', 0),
+            'withdraw_crypto_count': patterns.get('total_withdraw_crypto_count', 0),
+            'withdraw_crypto_details': [
+                {'ticker': t, 'amount': d['amount_krw'], 'count': d['count']}
+                for t, d in (patterns.get('withdraw_crypto_details', [])[:10])
+            ]
+        }
+        
+        # 세션에 저장 (TOML 저장용)
+        request.session['current_stds_dtm_summary'] = summary
+        
+        return JsonResponse({
+            'success': True,
+            'summary': summary
+        })
+        
+    except Exception as e:
+        logger.exception(f"Error analyzing STDS_DTM orderbook: {e}")
+        return JsonResponse({
+            'success': False,
+            'message': f'분석 중 오류: {str(e)}'
+        })
+    
+
+
+@login_required
+@require_POST
+def save_to_session(request):
+    """
+    JavaScript에서 세션에 데이터 저장
+    """
+    key = request.POST.get('key', '').strip()
+    data = request.POST.get('data', '').strip()
+    
+    if not key:
+        return JsonResponse({
+            'success': False,
+            'message': 'Key is required'
+        })
+    
+    try:
+        # JSON 파싱
+        parsed_data = json.loads(data) if data else {}
+        
+        # 세션에 저장
+        request.session[key] = parsed_data
+        
+        # 세션 갱신
+        request.session.modified = True
+        
+        logger.debug(f"Saved to session: {key} (size: {len(data)} bytes)")
+        
+        return JsonResponse({
+            'success': True,
+            'key': key
+        })
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON decode error: {e}")
+        return JsonResponse({
+            'success': False,
+            'message': f'Invalid JSON data: {e}'
+        })
+    except Exception as e:
+        logger.exception(f"Error saving to session: {e}")
+        return JsonResponse({
+            'success': False,
+            'message': f'Failed to save: {e}'
+        })
+
+
+
+
+
+

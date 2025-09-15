@@ -589,7 +589,8 @@
             }
         }
 
-        // Orderbook 분석 - ALERT ID별 현황 추가
+        // renderOrderbookAnalysis 함수 내부에서 _renderOrderbookPatterns 호출 뒤에 추가
+
         static renderOrderbookAnalysis(analysisResult, alertData) {
             // 동적으로 섹션 생성
             this._createOrderbookSections();
@@ -599,7 +600,8 @@
             
             // 각 섹션 렌더링
             this._renderOrderbookPatterns(analysisResult, periodInfo);
-            this._renderAlertOrderbook(analysisResult, alertData);  // 새로운 섹션
+            this._renderStdsDtmSummary(alertData, analysisResult);  // 새로 추가
+            this._renderAlertOrderbook(analysisResult, alertData);
             this._renderOrderbookDaily(analysisResult);
         }
 
@@ -694,6 +696,190 @@
                 });
             });
         }
+
+        static _renderStdsDtmSummary(alertData, analysisResult) {
+            // STDS_DTM 요약 섹션 동적 생성
+            const sectionId = 'section_stds_dtm_summary';
+            if (!document.getElementById(sectionId)) {
+                const section = document.createElement('div');
+                section.id = sectionId;
+                section.className = 'section';
+                section.innerHTML = `
+                    <h3>대표 ALERT STDS_DTM 날짜 요약</h3>
+                    <div class="table-wrap" id="result_stds_dtm_summary"></div>
+                `;
+                
+                // orderbook_patterns 섹션 다음에 삽입
+                const patternSection = document.getElementById('section_orderbook_patterns');
+                if (patternSection && patternSection.nextSibling) {
+                    patternSection.parentNode.insertBefore(section, patternSection.nextSibling);
+                }
+            }
+            
+            const container = document.getElementById('result_stds_dtm_summary');
+            if (!container) return;
+            
+            const section = document.getElementById(sectionId);
+            if (section) section.style.display = 'block';
+            
+            // 대표 ALERT의 STDS_DTM 찾기
+            if (!alertData || !alertData.rows) {
+                container.innerHTML = '<div class="stds-no-data">ALERT 데이터가 없습니다.</div>';
+                return;
+            }
+            
+            const cols = alertData.cols;
+            const rows = alertData.rows;
+            const repAlertId = alertData.currentAlertId || alertData.repAlertId;
+            
+            const idxAlertId = cols.indexOf('STR_ALERT_ID');
+            const idxStdsDtm = cols.indexOf('STDS_DTM');
+            
+            if (idxAlertId < 0 || idxStdsDtm < 0) {
+                container.innerHTML = '<div class="stds-no-data">필요한 컬럼을 찾을 수 없습니다.</div>';
+                return;
+            }
+            
+            // 대표 ALERT의 STDS_DTM 찾기
+            const repRow = rows.find(r => String(r[idxAlertId]) === String(repAlertId));
+            if (!repRow) {
+                container.innerHTML = '<div class="stds-no-data">대표 ALERT를 찾을 수 없습니다.</div>';
+                return;
+            }
+            
+            const stdsDtm = repRow[idxStdsDtm];
+            if (!stdsDtm) {
+                container.innerHTML = '<div class="stds-no-data">STDS_DTM 정보가 없습니다.</div>';
+                return;
+            }
+            
+            // 로딩 표시
+            container.innerHTML = '<div class="stds-no-data">STDS_DTM 날짜 데이터 분석 중...</div>';
+            
+            // 서버에 분석 요청
+            const cacheKey = analysisResult.cache_key;
+            if (cacheKey) {
+                fetch(window.URLS.analyze_stds_dtm_orderbook, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': this._getCookie('csrftoken')
+                    },
+                    body: new URLSearchParams({
+                        stds_date: stdsDtm,
+                        cache_key: cacheKey
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.summary) {
+                        this._renderStdsDtmContent(container, data.summary, repAlertId);
+                    } else {
+                        container.innerHTML = '<div class="stds-no-data">데이터 분석 실패</div>';
+                    }
+                })
+                .catch(error => {
+                    console.error('STDS_DTM analysis error:', error);
+                    container.innerHTML = '<div class="stds-no-data">분석 중 오류 발생</div>';
+                });
+            }
+        }
+
+        static _renderStdsDtmContent(container, summary, alertId) {
+            let html = '<div class="stds-summary-container">';
+            
+            // 헤더
+            html += `<div class="stds-summary-header">
+                <div class="stds-summary-title">ALERT ID: ${alertId}</div>
+                <div class="stds-summary-date">날짜: ${summary.date}</div>
+            </div>`;
+            
+            // 요약 카드
+            html += '<div class="stds-summary-grid">';
+            
+            const cards = [
+                { label: '매수', value: summary.buy_amount, count: summary.buy_count },
+                { label: '매도', value: summary.sell_amount, count: summary.sell_count },
+                { label: '원화 입금', value: summary.deposit_krw_amount, count: summary.deposit_krw_count },
+                { label: '원화 출금', value: summary.withdraw_krw_amount, count: summary.withdraw_krw_count },
+                { label: '가상자산 입금', value: summary.deposit_crypto_amount, count: summary.deposit_crypto_count },
+                { label: '가상자산 출금', value: summary.withdraw_crypto_amount, count: summary.withdraw_crypto_count }
+            ];
+            
+            cards.forEach(card => {
+                if (card.value > 0 || card.count > 0) {
+                    html += `<div class="stds-summary-card">
+                        <div class="stds-card-label">${card.label}</div>
+                        <div class="stds-card-value">${this._formatAmount(card.value)}</div>
+                        <div class="stds-card-count">${card.count}건</div>
+                    </div>`;
+                }
+            });
+            
+            html += '</div>';
+            
+            // 종목별 상세
+            const hasDetails = (summary.buy_details && summary.buy_details.length > 0) ||
+                            (summary.sell_details && summary.sell_details.length > 0) ||
+                            (summary.deposit_crypto_details && summary.deposit_crypto_details.length > 0) ||
+                            (summary.withdraw_crypto_details && summary.withdraw_crypto_details.length > 0);
+            
+            if (hasDetails) {
+                html += '<div class="stds-details-section">';
+                html += '<div class="stds-details-title">종목별 상세 (상위 10개)</div>';
+                html += '<div class="stds-details-grid">';
+                
+                // 매수 상세
+                if (summary.buy_details && summary.buy_details.length > 0) {
+                    html += this._renderStdsDetailGroup('매수', summary.buy_details);
+                }
+                
+                // 매도 상세
+                if (summary.sell_details && summary.sell_details.length > 0) {
+                    html += this._renderStdsDetailGroup('매도', summary.sell_details);
+                }
+                
+                // 가상자산 입금 상세
+                if (summary.deposit_crypto_details && summary.deposit_crypto_details.length > 0) {
+                    html += this._renderStdsDetailGroup('가상자산 입금', summary.deposit_crypto_details);
+                }
+                
+                // 가상자산 출금 상세
+                if (summary.withdraw_crypto_details && summary.withdraw_crypto_details.length > 0) {
+                    html += this._renderStdsDetailGroup('가상자산 출금', summary.withdraw_crypto_details);
+                }
+                
+                html += '</div></div>';
+            }
+            
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        static _renderStdsDetailGroup(title, details) {
+            let html = `<div class="stds-detail-group">
+                <div class="stds-detail-group-title">${title}</div>`;
+            
+            details.slice(0, 5).forEach(item => {
+                const amount = item.amount ? item.amount.toLocaleString('ko-KR') : '0';
+                html += `<div class="stds-detail-item">
+                    <span class="stds-detail-ticker">${item.ticker}</span>
+                    <span class="stds-detail-amount">${amount}원</span>
+                </div>`;
+            });
+            
+            if (details.length > 5) {
+                html += `<div class="stds-detail-item" style="color: #6a6a6a; font-style: italic;">
+                    ... 외 ${details.length - 5}개
+                </div>`;
+            }
+            
+            html += '</div>';
+            return html;
+        }
+
+
+
 
         // 새로운 메서드: ALERT ID별 매매/입출고 현황
         static _renderAlertOrderbook(analysisResult, alertData) {

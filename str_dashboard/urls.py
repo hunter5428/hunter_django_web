@@ -43,4 +43,16 @@ urlpatterns = [
     path('api/analyze_cached_orderbook/', views.analyze_cached_orderbook, name='analyze_cached_orderbook'),
     path('api/get_orderbook_summary/', views.get_orderbook_summary, name='get_orderbook_summary'),
     path('api/analyze_alert_orderbook/', views.analyze_alert_orderbook, name='analyze_alert_orderbook'),
+
+    # ========== 기존 URL 패턴들 아래에 추가 ==========
+    
+    # TOML Export APIs
+    path('api/prepare_toml_data/', views.prepare_toml_data, name='prepare_toml_data'),
+    path('api/download_toml/', views.download_toml, name='download_toml'),
+    
+    # STDS_DTM Analysis API
+    path('api/analyze_stds_dtm_orderbook/', views.analyze_stds_dtm_orderbook, name='analyze_stds_dtm_orderbook'),   
+    # Session Management API (추가)
+    path('api/save_to_session/', views.save_to_session, name='save_to_session'),
+
 ]
