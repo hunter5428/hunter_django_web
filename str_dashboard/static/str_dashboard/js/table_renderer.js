@@ -740,7 +740,15 @@
                 return;
             }
             
-             const stdsDtm = targetRow[idxStdsDtm];
+            // 대표 ALERT ID를 가진 행 찾기
+            const targetRow = rows.find(row => String(row[idxAlertId]) === String(repAlertId));
+            
+            if (!targetRow) {
+                container.innerHTML = '<div class="stds-no-data">대표 ALERT ID를 찾을 수 없습니다.</div>';
+                return;
+            }
+            
+            const stdsDtm = targetRow[idxStdsDtm];
             if (!stdsDtm) {
                 container.innerHTML = '<div class="stds-no-data">STDS_DTM 정보가 없습니다.</div>';
                 return;
@@ -766,7 +774,7 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.success && data.summary) {
-                        this._renderStdsDtmContent(container, data.summary, inputAlertId || targetRow[idxAlertId]);
+                        this._renderStdsDtmContent(container, data.summary, repAlertId || targetRow[idxAlertId]);
                     } else {
                         container.innerHTML = '<div class="stds-no-data">데이터 분석 실패</div>';
                     }
