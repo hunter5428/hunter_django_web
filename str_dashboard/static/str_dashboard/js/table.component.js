@@ -1144,6 +1144,397 @@
         }
     };
 
+
+
+    // Orderbook 분석 결과 렌더링 함수
+    window.renderOrderbookAnalysis = function(analysisResult) {
+        // 패턴 분석 섹션 찾기 또는 생성
+        let patternSection = document.getElementById('section_orderbook_patterns');
+        if (!patternSection) {
+            patternSection = document.createElement('div');
+            patternSection.id = 'section_orderbook_patterns';
+            patternSection.className = 'section';
+            patternSection.innerHTML = `
+                <h3>거래원장(Orderbook) 분석</h3>
+                <div class="table-wrap" id="result_orderbook_patterns"></div>
+            `;
+            
+            // IP 접속 이력 섹션 다음에 추가
+            const ipSection = document.getElementById('section_ip_access_history');
+            if (ipSection && ipSection.parentNode) {
+                ipSection.parentNode.insertBefore(patternSection, ipSection.nextSibling);
+            } else {
+                document.querySelector('.app-main').appendChild(patternSection);
+            }
+        }
+        
+        // 구간별 상세 섹션 찾기 또는 생성 
+        let segmentSection = document.getElementById('section_orderbook_segments');
+        if (!segmentSection) {
+            segmentSection = document.createElement('div');
+            segmentSection.id = 'section_orderbook_segments';
+            segmentSection.className = 'section collapsed'; // 기본 접힘
+            segmentSection.innerHTML = `
+                <h3>구간별 상세 내역</h3>
+                <div class="table-wrap" id="result_orderbook_segments"></div>
+            `;
+            
+            // 패턴 섹션 다음에 추가
+            if (patternSection && patternSection.parentNode) {
+                patternSection.parentNode.insertBefore(segmentSection, patternSection.nextSibling);
+            }
+        }
+        
+        // 섹션 표시
+        patternSection.style.display = 'block';
+        segmentSection.style.display = 'block';
+        
+        // 렌더링 컴포넌트 생성
+        const patternRenderer = new OrderbookPatternRenderer('result_orderbook_patterns');
+        const segmentRenderer = new OrderbookSegmentRenderer('result_orderbook_segments');
+        
+        // 데이터 렌더링
+        patternRenderer.render(analysisResult);
+        segmentRenderer.render(analysisResult);
+        
+        // 전역 데이터 저장 (이벤트 핸들러용)
+        window.orderbookAnalysisData = analysisResult;
+    };
+
+    // Orderbook 패턴 렌더러
+    class OrderbookPatternRenderer {
+        constructor(containerId) {
+            this.container = document.getElementById(containerId);
+        }
+        
+        render(data) {
+            if (!this.container) return;
+            
+            let html = '';
+            
+            // 패턴 분석 카드
+            if (data.patterns) {
+                html += this.renderPatternCards(data.patterns);
+            }
+            
+            // 일자별 요약 테이블
+            if (data.daily_summary && data.daily_summary.length > 0) {
+                html += this.renderDailySummary(data.daily_summary);
+            }
+            
+            this.container.innerHTML = html;
+            this.attachEventListeners();
+        }
+        
+        renderPatternCards(patterns) {
+            let html = `<div class="orderbook-patterns-grid">`;
+            
+            const items = [
+                { key: 'buy', label: '총 매수', amount: patterns.total_buy_amount, count: patterns.total_buy_count },
+                { key: 'sell', label: '총 매도', amount: patterns.total_sell_amount, count: patterns.total_sell_count },
+                { key: 'deposit_krw', label: '원화 입금', amount: patterns.total_deposit_krw, count: patterns.total_deposit_krw_count },
+                { key: 'withdraw_krw', label: '원화 출금', amount: patterns.total_withdraw_krw, count: patterns.total_withdraw_krw_count },
+                { key: 'deposit_crypto', label: '가상자산 입금', amount: patterns.total_deposit_crypto, count: patterns.total_deposit_crypto_count },
+                { key: 'withdraw_crypto', label: '가상자산 출금', amount: patterns.total_withdraw_crypto, count: patterns.total_withdraw_crypto_count }
+            ];
+            
+            items.forEach(item => {
+                if (item.amount > 0 || item.count > 0) {
+                    html += `
+                        <div class="pattern-stat-card" data-action="${item.key}">
+                            <div class="pattern-stat-label">${item.label}</div>
+                            <div class="pattern-stat-value">${item.amount.toLocaleString('ko-KR')}원</div>
+                            <div class="pattern-stat-count">${item.count.toLocaleString('ko-KR')}건</div>
+                            <div class="pattern-detail" id="pattern-detail-${item.key}"></div>
+                        </div>`;
+                }
+            });
+            
+            html += `</div>`;
+            return html;
+        }
+        
+        renderDailySummary(dailySummary) {
+            let html = `
+            <div class="card" style="margin-top: 15px;">
+                <h4 style="margin: 0 0 10px 0; font-size: 14px;">일자별 매수/매도, 입출금 현황</h4>
+                <table class="table daily-summary-table">
+                    <thead>
+                        <tr>
+                            <th>날짜</th>
+                            <th>매수</th>
+                            <th>매도</th>
+                            <th>원화입금</th>
+                            <th>원화출금</th>
+                            <th>가상자산<br>내부입금</th>
+                            <th>가상자산<br>내부출금</th>
+                            <th>가상자산<br>외부입금</th>
+                            <th>가상자산<br>외부출금</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+            
+            dailySummary.forEach((day, idx) => {
+                html += `
+                    <tr>
+                        <td>${day['날짜']}</td>
+                        <td class="clickable-cell" data-day="${idx}" data-type="매수">
+                            ${day['매수'].total_amount.toLocaleString('ko-KR')}
+                        </td>
+                        <td class="clickable-cell" data-day="${idx}" data-type="매도">
+                            ${day['매도'].total_amount.toLocaleString('ko-KR')}
+                        </td>
+                        <td class="clickable-cell" data-day="${idx}" data-type="원화입금">
+                            ${day['원화입금'].total_amount.toLocaleString('ko-KR')}
+                        </td>
+                        <td class="clickable-cell" data-day="${idx}" data-type="원화출금">
+                            ${day['원화출금'].total_amount.toLocaleString('ko-KR')}
+                        </td>
+                        <td class="clickable-cell" data-day="${idx}" data-type="가상자산내부입금">
+                            ${day['가상자산내부입금'].total_amount.toLocaleString('ko-KR')}
+                        </td>
+                        <td class="clickable-cell" data-day="${idx}" data-type="가상자산내부출금">
+                            ${day['가상자산내부출금'].total_amount.toLocaleString('ko-KR')}
+                        </td>
+                        <td class="clickable-cell" data-day="${idx}" data-type="가상자산외부입금">
+                            ${day['가상자산외부입금'].total_amount.toLocaleString('ko-KR')}
+                        </td>
+                        <td class="clickable-cell" data-day="${idx}" data-type="가상자산외부출금">
+                            ${day['가상자산외부출금'].total_amount.toLocaleString('ko-KR')}
+                        </td>
+                    </tr>
+                    <tr class="daily-detail-row" id="daily-detail-${idx}">
+                        <td colspan="9"><div class="daily-detail-content"></div></td>
+                    </tr>`;
+            });
+            
+            html += `
+                    </tbody>
+                </table>
+            </div>`;
+            
+            return html;
+        }
+        
+        attachEventListeners() {
+            // 패턴 카드 클릭 이벤트
+            document.querySelectorAll('.pattern-stat-card').forEach(card => {
+                card.addEventListener('click', this.handlePatternCardClick.bind(this));
+            });
+            
+            // 일자별 셀 클릭 이벤트
+            document.querySelectorAll('.clickable-cell').forEach(cell => {
+                cell.addEventListener('click', this.handleDailyCellClick.bind(this));
+            });
+        }
+        
+        handlePatternCardClick(e) {
+            const card = e.currentTarget;
+            const action = card.dataset.action;
+            const detailDiv = card.querySelector('.pattern-detail');
+            
+            if (!detailDiv) return;
+            
+            if (detailDiv.classList.contains('show')) {
+                detailDiv.classList.remove('show');
+                card.classList.remove('expanded');
+            } else {
+                // 상세 내역 생성
+                const patterns = window.orderbookAnalysisData.patterns;
+                const details = patterns[`${action}_details`];
+                
+                if (details && details.length > 0) {
+                    detailDiv.innerHTML = this.formatPatternDetails(details);
+                } else {
+                    detailDiv.innerHTML = '<div style="color: #666;">상세 내역이 없습니다.</div>';
+                }
+                
+                detailDiv.classList.add('show');
+                card.classList.add('expanded');
+            }
+        }
+        
+        handleDailyCellClick(e) {
+            const cell = e.currentTarget;
+            const dayIdx = parseInt(cell.dataset.day);
+            const type = cell.dataset.type;
+            const detailRow = document.getElementById(`daily-detail-${dayIdx}`);
+            
+            if (!detailRow) return;
+            
+            const detailContent = detailRow.querySelector('.daily-detail-content');
+            const dayData = window.orderbookAnalysisData.daily_summary[dayIdx][type];
+            
+            // 이미 열려있고 같은 타입이면 닫기
+            if (detailRow.style.display === 'table-row' && detailRow.dataset.currentType === type) {
+                detailRow.style.display = 'none';
+                cell.classList.remove('active');
+                return;
+            }
+            
+            // 다른 셀들의 active 제거
+            document.querySelectorAll(`.clickable-cell[data-day="${dayIdx}"]`).forEach(c => {
+                c.classList.remove('active');
+            });
+            
+            // 상세 내역 생성
+            let html = `<strong>${type} 상세내역</strong><br><br>`;
+            
+            if (dayData && dayData.details && dayData.details.length > 0) {
+                html += this.formatDailyDetails(dayData.details, type);
+            } else {
+                html += '<div style="color: #666;">상세 내역이 없습니다.</div>';
+            }
+            
+            detailContent.innerHTML = html;
+            detailRow.style.display = 'table-row';
+            detailRow.dataset.currentType = type;
+            cell.classList.add('active');
+        }
+        
+        formatPatternDetails(details) {
+            let html = '<div class="pattern-detail-item">';
+            details.forEach(([ticker, data]) => {
+                const amount = parseInt(data.amount_krw || 0);
+                const quantity = parseFloat(data.quantity || 0);
+                const count = parseInt(data.count || 0);
+                
+                html += `<div><strong>${ticker}</strong>: `;
+                html += `금액 ${amount.toLocaleString('ko-KR')}원, `;
+                html += `수량 ${quantity.toLocaleString('ko-KR', {maximumFractionDigits: 4})}개, `;
+                html += `횟수 ${count}건</div>`;
+            });
+            html += '</div>';
+            return html;
+        }
+        
+        formatDailyDetails(details, type) {
+            let html = '<div style="line-height: 1.6;">';
+            
+            if (type === '매수' || type === '매도') {
+                details.forEach(([ticker, data]) => {
+                    const amount = parseInt(data.amount_krw || 0);
+                    const quantity = parseFloat(data.quantity || 0);
+                    const count = parseInt(data.count || 0);
+                    
+                    html += `${ticker}: 금액 ${amount.toLocaleString('ko-KR')}원, `;
+                    html += `수량 ${quantity.toLocaleString('ko-KR', {maximumFractionDigits: 4})}개, `;
+                    html += `횟수 ${count}건<br>`;
+                });
+            } else if (type.includes('가상자산')) {
+                details.forEach(item => {
+                    const datetime = item.datetime || '';
+                    const ticker = item.ticker || 'Unknown';
+                    const amount = parseInt(item.amount_krw || 0);
+                    const quantity = parseFloat(item.quantity || 0);
+                    
+                    html += `${datetime} - ${ticker}: `;
+                    html += `금액 ${amount.toLocaleString('ko-KR')}원, `;
+                    html += `수량 ${quantity.toLocaleString('ko-KR', {maximumFractionDigits: 4})}개<br>`;
+                });
+            } else {
+                // 원화입출금
+                details.forEach(([ticker, data]) => {
+                    const amount = parseInt(data.amount_krw || 0);
+                    const count = parseInt(data.count || 0);
+                    
+                    html += `KRW: 금액 ${amount.toLocaleString('ko-KR')}원, `;
+                    html += `횟수 ${count}건<br>`;
+                });
+            }
+            
+            html += '</div>';
+            return html;
+        }
+    }
+
+    // Orderbook 구간 렌더러
+    class OrderbookSegmentRenderer {
+        constructor(containerId) {
+            this.container = document.getElementById(containerId);
+        }
+        
+        render(data) {
+            if (!this.container || !data.summary_data) return;
+            
+            let html = `
+            <table class="table segments-table">
+                <thead>
+                    <tr>
+                        <th>구간</th>
+                        <th>Cat</th>
+                        <th>행동</th>
+                        <th>시작시간</th>
+                        <th>종료시간</th>
+                        <th>소요시간</th>
+                        <th>건수</th>
+                        <th>종목수</th>
+                        <th>주요종목</th>
+                        <th>총금액(원)</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+            
+            data.summary_data.forEach((segment, idx) => {
+                const amount = segment['총금액(KRW)'] || 0;
+                const amountFormatted = amount > 0 ? Number(amount).toLocaleString('ko-KR') : '-';
+                const countFormatted = Number(segment['건수'] || 0).toLocaleString('ko-KR');
+                
+                html += `
+                    <tr class="segment-row" data-segment="${idx}">
+                        <td>${segment['구간']}</td>
+                        <td>${segment['trans_cat'] || '-'}</td>
+                        <td style="font-weight: 600;">${segment['행동']}</td>
+                        <td style="font-size: 11px;">${segment['시작시간']}</td>
+                        <td style="font-size: 11px;">${segment['종료시간']}</td>
+                        <td>${segment['소요시간']}</td>
+                        <td>${countFormatted}</td>
+                        <td>${segment['종목수']}</td>
+                        <td style="font-size: 11px;">${segment['주요종목'] || '-'}</td>
+                        <td style="text-align: right; font-weight: 600;">${amountFormatted}</td>
+                    </tr>`;
+                
+                if (segment['상세내역']) {
+                    html += `
+                    <tr class="segment-detail-row" id="segment-detail-${idx}">
+                        <td colspan="10">
+                            <pre class="segment-detail-content">${segment['상세내역']}</pre>
+                        </td>
+                    </tr>`;
+                }
+            });
+            
+            html += `
+                </tbody>
+            </table>`;
+            
+            this.container.innerHTML = html;
+            this.attachEventListeners();
+        }
+        
+        attachEventListeners() {
+            document.querySelectorAll('.segment-row').forEach(row => {
+                row.addEventListener('click', this.handleSegmentRowClick.bind(this));
+            });
+        }
+        
+        handleSegmentRowClick(e) {
+            const row = e.currentTarget;
+            const segmentIdx = row.dataset.segment;
+            const detailRow = document.getElementById(`segment-detail-${segmentIdx}`);
+            
+            if (detailRow) {
+                if (detailRow.style.display === 'table-row') {
+                    detailRow.style.display = 'none';
+                    row.classList.remove('expanded');
+                } else {
+                    detailRow.style.display = 'table-row';
+                    row.classList.add('expanded');
+                }
+            }
+        }
+    }
+
     // HTML 이스케이프 헬퍼 함수
     function escapeHtml(text) {
         const div = document.createElement('div');
