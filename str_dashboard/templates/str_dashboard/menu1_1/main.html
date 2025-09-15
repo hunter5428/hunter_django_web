@@ -306,19 +306,16 @@ window.URLS = {
     query_corp_related_persons: "{% url 'query_corp_related_persons' %}",
     query_person_related_summary: "{% url 'query_person_related_summary' %}",
     query_ip_access_history: "{% url 'query_ip_access_history' %}",
-    
-    // Redshift Orderbook 관련 URL 추가
     query_redshift_orderbook: "{% url 'query_redshift_orderbook' %}",
     get_cached_orderbook_info: "{% url 'get_cached_orderbook_info' %}",
     clear_orderbook_cache: "{% url 'clear_orderbook_cache' %}",
-    // Orderbook 분석 관련 URL 추가
     analyze_cached_orderbook: "{% url 'analyze_cached_orderbook' %}",
     get_orderbook_summary: "{% url 'get_orderbook_summary' %}"
 };
 </script>
 
-<!-- 테이블 컴포넌트 -->
-<script src="{% static 'str_dashboard/js/table.component.js' %}"></script>
+<!-- 테이블 렌더러 (table.component.js를 table_renderer.js로 변경) -->
+<script src="{% static 'str_dashboard/js/table_renderer.js' %}"></script>
 
 <!-- 듀얼 DB 연결 관리 스크립트 -->
 <script src="{% static 'str_dashboard/js/dual_db_manager.js' %}"></script>
