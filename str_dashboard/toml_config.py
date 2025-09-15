@@ -325,6 +325,7 @@ class TomlDataProcessor:
         
         return substitution
     
+    # str_dashboard/toml_config.py - format_orderbook_summary 메서드 수정
     @staticmethod
     def format_orderbook_summary(patterns: Dict, period: Dict) -> str:
         """Orderbook 패턴을 텍스트 요약으로 변환"""
@@ -354,21 +355,44 @@ class TomlDataProcessor:
                 details = patterns.get(details_key, [])[:config['top_n_tickers']]
                 if details:
                     detail_parts = []
-                    for ticker, data in details:
-                        detail_part = config['template']['detail_template'].format(
-                            ticker=ticker,
-                            amount=data.get('amount_krw', 0),
-                            count=data.get('count', 0),
-                            quantity=data.get('quantity', 0)
-                        )
+                    for item in details:
+                        # details가 튜플 리스트인지 딕셔너리 리스트인지 확인
+                        if isinstance(item, tuple) and len(item) == 2:
+                            # 튜플인 경우: (ticker, data)
+                            ticker, data = item
+                            if isinstance(data, dict):
+                                detail_part = config['template']['detail_template'].format(
+                                    ticker=ticker,
+                                    amount=data.get('amount_krw', 0),
+                                    count=data.get('count', 0),
+                                    quantity=data.get('quantity', 0)
+                                )
+                            else:
+                                # data가 딕셔너리가 아닌 경우
+                                detail_part = f"{ticker}: 데이터 형식 오류"
+                        elif isinstance(item, dict):
+                            # 딕셔너리인 경우
+                            detail_part = config['template']['detail_template'].format(
+                                ticker=item.get('ticker', 'Unknown'),
+                                amount=item.get('amount', item.get('amount_krw', 0)),
+                                count=item.get('count', 0),
+                                quantity=item.get('quantity', 0)
+                            )
+                        else:
+                            # 예상치 못한 형식
+                            logger.warning(f"Unexpected detail format: {type(item)}")
+                            continue
+                        
                         detail_parts.append(detail_part)
                     
-                    action_line += ' ' + ', '.join(detail_parts)
+                    if detail_parts:
+                        action_line += ' ' + ', '.join(detail_parts)
                 
                 lines.append(action_line)
         
         return ' '.join(lines)
-    
+
+
     @staticmethod
     def format_ip_access_summary(ip_data: List[Dict]) -> str:
         """IP 접속 이력을 텍스트 요약으로 변환"""
@@ -433,19 +457,73 @@ class TomlDataProcessor:
         
         # Orderbook과 동일한 형식 사용
         if config['use_same_format_as_orderbook']:
-            # 패턴 데이터 구성
+            # 패턴 데이터 구성 - details 형식을 통일
             patterns = {
                 'total_buy_amount': stds_data.get('buy_amount', 0),
-                'buy_details': stds_data.get('buy_details', []),
+                'buy_details': [],
                 'total_sell_amount': stds_data.get('sell_amount', 0),
-                'sell_details': stds_data.get('sell_details', []),
+                'sell_details': [],
                 'total_deposit_krw': stds_data.get('deposit_krw_amount', 0),
                 'total_withdraw_krw': stds_data.get('withdraw_krw_amount', 0),
                 'total_deposit_crypto': stds_data.get('deposit_crypto_amount', 0),
-                'deposit_crypto_details': stds_data.get('deposit_crypto_details', []),
+                'deposit_crypto_details': [],
                 'total_withdraw_crypto': stds_data.get('withdraw_crypto_amount', 0),
-                'withdraw_crypto_details': stds_data.get('withdraw_crypto_details', [])
+                'withdraw_crypto_details': []
             }
+            
+            # buy_details 처리
+            if stds_data.get('buy_details'):
+                for item in stds_data['buy_details']:
+                    if isinstance(item, dict):
+                        # 이미 딕셔너리 형식
+                        patterns['buy_details'].append(item)
+                    elif isinstance(item, (list, tuple)) and len(item) >= 2:
+                        # 리스트/튜플 형식을 딕셔너리로 변환
+                        patterns['buy_details'].append({
+                            'ticker': item[0],
+                            'amount_krw': item[1] if isinstance(item[1], (int, float)) else item[1].get('amount', 0),
+                            'count': item[1].get('count', 1) if isinstance(item[1], dict) else 1,
+                            'quantity': item[1].get('quantity', 0) if isinstance(item[1], dict) else 0
+                        })
+            
+            # sell_details 처리
+            if stds_data.get('sell_details'):
+                for item in stds_data['sell_details']:
+                    if isinstance(item, dict):
+                        patterns['sell_details'].append(item)
+                    elif isinstance(item, (list, tuple)) and len(item) >= 2:
+                        patterns['sell_details'].append({
+                            'ticker': item[0],
+                            'amount_krw': item[1] if isinstance(item[1], (int, float)) else item[1].get('amount', 0),
+                            'count': item[1].get('count', 1) if isinstance(item[1], dict) else 1,
+                            'quantity': item[1].get('quantity', 0) if isinstance(item[1], dict) else 0
+                        })
+            
+            # deposit_crypto_details 처리
+            if stds_data.get('deposit_crypto_details'):
+                for item in stds_data['deposit_crypto_details']:
+                    if isinstance(item, dict):
+                        patterns['deposit_crypto_details'].append(item)
+                    elif isinstance(item, (list, tuple)) and len(item) >= 2:
+                        patterns['deposit_crypto_details'].append({
+                            'ticker': item[0] if len(item) > 0 else 'Unknown',
+                            'amount_krw': item[1] if isinstance(item[1], (int, float)) else item[1].get('amount', 0),
+                            'count': item[1].get('count', 1) if isinstance(item[1], dict) else 1,
+                            'quantity': item[1].get('quantity', 0) if isinstance(item[1], dict) else 0
+                        })
+            
+            # withdraw_crypto_details 처리
+            if stds_data.get('withdraw_crypto_details'):
+                for item in stds_data['withdraw_crypto_details']:
+                    if isinstance(item, dict):
+                        patterns['withdraw_crypto_details'].append(item)
+                    elif isinstance(item, (list, tuple)) and len(item) >= 2:
+                        patterns['withdraw_crypto_details'].append({
+                            'ticker': item[0] if len(item) > 0 else 'Unknown',
+                            'amount_krw': item[1] if isinstance(item[1], (int, float)) else item[1].get('amount', 0),
+                            'count': item[1].get('count', 1) if isinstance(item[1], dict) else 1,
+                            'quantity': item[1].get('quantity', 0) if isinstance(item[1], dict) else 0
+                        })
             
             # 더미 기간 정보 (날짜만 사용)
             period = {
@@ -460,7 +538,8 @@ class TomlDataProcessor:
             return f"{header} {config['template']['body']} {body}"
         
         return header
-    
+
+
     @staticmethod
     def process_related_person_transactions(transactions: List[Dict]) -> str:
         """관련인 거래 내역을 텍스트로 변환"""

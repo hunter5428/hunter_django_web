@@ -22,15 +22,23 @@
      */
     class DualDBConnectionManager {
         constructor() {
-            console.log('DualDBConnectionManager constructor called'); // 디버깅용
+            console.log('DualDBConnectionManager constructor called');
             this.oracleStatus = false;
             this.redshiftStatus = false;
             this.modal = null;
+            
+            // 메서드 바인딩 추가 - this 컨텍스트 고정
+            this.openModal = this.openModal.bind(this);
+            this.closeModal = this.closeModal.bind(this);
+            this.testOracleConnection = this.testOracleConnection.bind(this);
+            this.testRedshiftConnection = this.testRedshiftConnection.bind(this);
+            this.connectAllDatabases = this.connectAllDatabases.bind(this);
+            
             this.init();
         }
 
         init() {
-            console.log('DualDBConnectionManager init called'); // 디버깅용
+            console.log('DualDBConnectionManager init called');
             
             // 요소 확인
             const openBtn = $('#btn-open-db-modal');
@@ -43,7 +51,7 @@
                 modal: !!modal
             });
             
-            // 모달 관련 이벤트
+            // 모달 관련 이벤트 - 화살표 함수 대신 바인딩된 메서드 사용
             if (openBtn) {
                 openBtn.addEventListener('click', (e) => {
                     console.log('Open modal button clicked');
@@ -62,7 +70,7 @@
                 });
             }
             
-            // 개별 테스트 버튼
+            // 개별 테스트 버튼 - 바인딩된 메서드 직접 사용
             const oracleTestBtn = $('#btn-test-oracle');
             const redshiftTestBtn = $('#btn-test-redshift');
             
