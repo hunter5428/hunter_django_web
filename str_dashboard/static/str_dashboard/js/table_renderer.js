@@ -640,10 +640,12 @@
             if (section) {
                 section.style.display = 'block';
                 
-                // 제목에 기간 정보 추가
+                // 🔥 수정: 조회에 사용된 날짜 범위 표시 (실제 데이터 기간이 아닌)
                 const h3 = section.querySelector('h3');
                 if (h3 && periodInfo.start_date && periodInfo.end_date) {
-                    h3.textContent = `거래원장(Orderbook) 개요 (${periodInfo.start_date} ~ ${periodInfo.end_date})`;
+                    // monthsBack 정보가 있으면 표시
+                    const monthsInfo = data.monthsBack ? ` (-${data.monthsBack}개월)` : '';
+                    h3.textContent = `거래원장(Orderbook) 개요 (${periodInfo.start_date} ~ ${periodInfo.end_date}${monthsInfo})`;
                 }
             }
             

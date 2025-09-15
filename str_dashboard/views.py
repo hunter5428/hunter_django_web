@@ -1090,19 +1090,16 @@ def analyze_cached_orderbook(request):
         # 일자별 요약 가져오기
         daily_summary = analyzer.get_daily_summary()
         
-        # 기간 정보 추출 (MIN - 3개월 ~ MAX)
+        # 🔥 수정: 캐시에 저장된 조회 기간 정보 사용 (실제 데이터 기간이 아닌)
         period_info = {}
-        if not df.empty and 'trade_date' in df.columns:
-            # 실제 데이터의 최소/최대 날짜
-            min_date = pd.to_datetime(df['trade_date']).min()
-            max_date = pd.to_datetime(df['trade_date']).max()
-            
-            # 표시용 날짜 포맷
+        if cache_key in ORDERBOOK_CACHE:
+            cache_data = ORDERBOOK_CACHE[cache_key]
+            # 캐시에 저장된 원본 조회 기간 사용 (D+1 적용 전의 날짜)
             period_info = {
-                'start_date': min_date.strftime('%Y-%m-%d'),
-                'end_date': max_date.strftime('%Y-%m-%d'),
-                'actual_start': min_date,
-                'actual_end': max_date
+                'start_date': cache_data['start_date'],  # 이미 -3개월 또는 -12개월 적용된 날짜
+                'end_date': cache_data['end_date'],      # ALERT의 TRAN_END 날짜
+                'query_start': cache_data['start_time'], # 실제 쿼리에 사용된 시간 (D+1 적용)
+                'query_end': cache_data['end_time']      # 실제 쿼리에 사용된 시간 (D+1 적용)
             }
         
         # 결과를 캐시에 추가 저장
