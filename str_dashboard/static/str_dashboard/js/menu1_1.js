@@ -1,16 +1,12 @@
 // str_dashboard/static/str_dashboard/js/menu1_1.js
+// ALERT ID 조회 페이지 메인 로직 - 리팩토링 버전
 
-/**
- * ALERT ID 조회 페이지 메인 JavaScript
- * - 듀얼 DB (Oracle + Redshift) 지원
- * - 통합 고객 정보 조회 적용
- * - 테이블 컴포넌트 활용
- */
 (function() {
     'use strict';
 
     // ==================== 유틸리티 ====================
     const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => document.querySelectorAll(sel);
     
     const getCookie = (name) => {
         const value = `; ${document.cookie}`;
@@ -18,90 +14,104 @@
         return parts.length === 2 ? decodeURIComponent(parts.pop().split(';').shift()) : undefined;
     };
 
-    // ==================== ALERT 조회 관리 ====================
-    class AlertSearchManager {
-        constructor() {
-            this.searchBtn = $('#alert_id_search_btn');
-            this.inputField = $('#alert_id_input');
-            this.alertData = null;  // Alert 데이터 저장
-            this.init();
+    // ==================== API 호출 모듈 ====================
+    class APIClient {
+        constructor(baseHeaders) {
+            this.headers = {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': getCookie('csrftoken'),
+                ...baseHeaders
+            };
         }
 
-        init() {
-            this.searchBtn?.addEventListener('click', () => this.search());
-            this.inputField?.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') this.search();
-            });
-        }
-
-        async search() {
-            // 듀얼 DB 매니저를 통해 Oracle 연결 상태 확인
-            if (!window.dualDBManager || !window.dualDBManager.isOracleConnected()) {
-                alert('먼저 Oracle DB 연결을 완료해 주세요.');
-                $('#btn-open-db-modal')?.click();
-                return;
-            }
-            
-            const alertId = this.inputField?.value?.trim();
-            
-            if (!alertId) {
-                alert('ALERT ID를 입력하세요.');
-                return;
-            }
-
-            console.log('Searching for ALERT ID:', alertId);
-            console.log('Oracle connected:', window.dualDBManager.isOracleConnected());
-            console.log('Redshift connected:', window.dualDBManager.isRedshiftConnected());
-
-            // 초기화: 모든 섹션 숨기기
-            document.querySelectorAll('.section').forEach(section => {
-                section.style.display = 'none';
-            });
-
+        async post(url, data) {
             try {
-                // ALERT 정보 조회 (Oracle)
-                const alertResponse = await fetch(window.URLS.query_alert, {
+                const response = await fetch(url, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
-                    body: new URLSearchParams({ alert_id: alertId })
+                    headers: this.headers,
+                    body: new URLSearchParams(data)
                 });
-
-                const alertData = await alertResponse.json();
-                console.log('Alert query response:', alertData);
                 
-                if (!alertData.success) {
-                    alert(alertData.message || '조회 실패');
-                    return;
-                }
-
-                const cols = (alertData.columns || []).map(c => String(c || '').toUpperCase());
-                const rows = alertData.rows || [];
-                console.log('Alert data - columns:', cols.length, 'rows:', rows.length);
-                
-                const processedData = this.processAlertData(cols, rows, alertId);
-                console.log('Processed data:', processedData);
-                
-                // Alert 데이터 저장 (나중에 사용)
-                this.alertData = { cols, rows, ...processedData };
-                
-                // 모든 섹션 데이터 조회 및 렌더링
-                await this.fetchAndRenderAllSections(processedData);
-                
-                // Redshift 연결되어 있으면 추가 데이터 조회 가능
-                if (window.dualDBManager && window.dualDBManager.isRedshiftConnected()) {
-                    console.log('Redshift is connected, additional queries can be performed');
+                // HTML 응답 체크 (로그인 페이지 리다이렉트 등)
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    throw new Error('서버 응답이 JSON 형식이 아닙니다. 세션이 만료되었을 수 있습니다.');
                 }
                 
+                return await response.json();
             } catch (error) {
-                console.error('Alert search error:', error);
-                alert('조회 중 오류가 발생했습니다. 일부 데이터만 표시될 수 있습니다.');
+                console.error('API call failed:', error);
+                throw error;
+            }
+        }
+    }
+
+    // ==================== 상태 관리 ====================
+    class SearchState {
+        constructor() {
+            this.reset();
+        }
+
+        reset() {
+            this.currentAlertId = null;
+            this.alertData = null;
+            this.customerData = null;
+            this.isSearching = false;
+            this.abortController = null;
+        }
+
+        setSearching(value) {
+            this.isSearching = value;
+        }
+
+        setAlertData(data) {
+            this.alertData = data;
+        }
+
+        abort() {
+            if (this.abortController) {
+                this.abortController.abort();
+                this.abortController = null;
+            }
+        }
+    }
+
+    // ==================== UI 관리 ====================
+    class UIManager {
+        static hideAllSections() {
+            $$('.section').forEach(section => {
+                section.style.display = 'none';
+                // 기존 내용 초기화
+                const container = section.querySelector('.table-wrap');
+                if (container) {
+                    container.innerHTML = '';
+                }
+            });
+        }
+
+        static showSection(sectionId) {
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.style.display = 'block';
             }
         }
 
-        processAlertData(cols, rows, alertId) {
+        static showLoading(show = true) {
+            const btn = $('#alert_id_search_btn');
+            if (btn) {
+                btn.disabled = show;
+                btn.textContent = show ? '조회 중...' : '조회';
+            }
+        }
+
+        static showError(message) {
+            alert(message || '조회 중 오류가 발생했습니다.');
+        }
+    }
+
+    // ==================== 데이터 처리 ====================
+    class DataProcessor {
+        static processAlertData(cols, rows, alertId) {
             const idxAlert = cols.indexOf('STR_ALERT_ID');
             const idxRule = cols.indexOf('STR_RULE_ID');
             const idxCust = cols.indexOf('CUST_ID');
@@ -124,7 +134,7 @@
 
             if (idxRule >= 0) {
                 const seen = new Set();
-                for (const row of rows) {
+                rows.forEach(row => {
                     const ruleId = row[idxRule];
                     if (ruleId != null) {
                         const strId = String(ruleId).trim();
@@ -133,213 +143,27 @@
                             canonicalIds.push(strId);
                         }
                     }
-                }
-            }
-
-            return { cols, rows, alertId, repRuleId, custIdForPerson, canonicalIds };
-        }
-
-        async fetchCustomerInfo(custId) {
-            try {
-                // 통합 API 호출 - 한 번의 요청으로 모든 고객 정보 조회
-                const response = await fetch(window.URLS.query_customer_unified, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
-                    body: new URLSearchParams({ cust_id: String(custId) })
                 });
-                
-                const customerData = await response.json();
-                
-                if (customerData.success) {
-                    const customerType = customerData.customer_type;
-                    console.log(`Customer unified info loaded - type: ${customerType}, rows: ${customerData.rows?.length}`);
-                    
-                    // 통합 테이블 렌더링
-                    window.renderCustomerUnifiedSection(
-                        customerData.columns || [], 
-                        customerData.rows || []
-                    );
-                    
-                    // 고객 유형에 따른 추가 조회
-                    if (customerType === '법인') {
-                        console.log('Fetching corp related persons...');
-                        await this.fetchCorpRelatedPersons(custId);
-                    } else if (customerType === '개인') {
-                        console.log('Fetching person related summary...');
-                        await this.fetchPersonRelatedSummary(custId);
-                    }
-                    
-                    // 중복 회원 검색 (데이터가 있는 경우만)
-                    if (customerData.rows && customerData.rows.length > 0) {
-                        console.log(`Fetching duplicate persons for ${customerType}...`);
-                        await this.fetchDuplicatePersons(
-                            custId, 
-                            customerData.columns, 
-                            customerData.rows[0], 
-                            customerType
-                        );
-                    }
-                    
-                    // MID 추출 (통합 정보에서)
-                    let memId = null;
-                    if (customerData.rows && customerData.rows.length > 0) {
-                        const midIdx = customerData.columns.indexOf('MID');
-                        if (midIdx >= 0) {
-                            memId = customerData.rows[0][midIdx];
-                        }
-                    }
-                    
-                    // MID가 있고 거래 기간이 있으면 IP 접속 이력 조회
-                    if (memId) {
-                        const tranPeriod = this.extractTransactionPeriod();
-                        if (tranPeriod.start && tranPeriod.end) {
-                            console.log(`Fetching IP access history for MID: ${memId}`);
-                            await this.fetchIPAccessHistory(memId, tranPeriod);
-                            
-                            // Redshift Orderbook 조회 추가
-                            if (window.dualDBManager && window.dualDBManager.isRedshiftConnected()) {
-                                console.log(`Fetching Redshift orderbook for MID: ${memId}`);
-                                await this.fetchRedshiftOrderbook(memId, tranPeriod);
-                            }
-                        }
-                    }
-
-                } else {
-                    console.error('Customer info query failed:', customerData.message);
-                    window.renderCustomerUnifiedSection([], []);
-                }
-            } catch (error) {
-                console.error('Customer info fetch failed:', error);
-                window.renderCustomerUnifiedSection([], []);
             }
+
+            return { repRuleId, custIdForPerson, canonicalIds };
         }
 
-        async fetchIPAccessHistory(memId, tranPeriod) {
-            try {
-                // 날짜 형식 변환 (YYYY-MM-DD 형식으로)
-                const startDate = tranPeriod.start.split(' ')[0];
-                const endDate = tranPeriod.end.split(' ')[0];
-                
-                const response = await fetch(window.URLS.query_ip_access_history, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
-                    body: new URLSearchParams({
-                        mem_id: String(memId),
-                        start_date: startDate,
-                        end_date: endDate
-                    })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    console.log(`IP access history loaded - rows: ${result.rows?.length}`);
-                    window.renderIPAccessHistorySection(result.columns || [], result.rows || []);
-                } else {
-                    console.error('IP access history query failed:', result.message);
-                    window.renderIPAccessHistorySection([], []);
-                }
-            } catch (error) {
-                console.error('IP access history fetch failed:', error);
-                window.renderIPAccessHistorySection([], []);
-            }
-        }
-
-        async fetchCorpRelatedPersons(custId) {
-            try {
-                const response = await fetch(window.URLS.query_corp_related_persons, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
-                    body: new URLSearchParams({ 
-                        cust_id: String(custId)
-                    })
-                });
-                
-                const relatedData = await response.json();
-                if (relatedData.success) {
-                    window.renderCorpRelatedSection(relatedData.columns || [], relatedData.rows || []);
-                } else {
-                    console.error('Corp related persons query failed:', relatedData.message);
-                    window.renderCorpRelatedSection([], []);
-                }
-            } catch (error) {
-                console.error('Corp related persons fetch failed:', error);
-                window.renderCorpRelatedSection([], []);
-            }
-        }
-
-        async fetchPersonRelatedSummary(custId) {
-            try {
-                // ALERT 데이터에서 거래 기간 추출
-                const tranPeriod = this.extractTransactionPeriod();
-                
-                if (!tranPeriod.start || !tranPeriod.end) {
-                    console.log('No transaction period found, skipping person related summary');
-                    window.renderPersonRelatedSection(null);
-                    return;
-                }
-                
-                console.log(`Fetching person related summary for period: ${tranPeriod.start} ~ ${tranPeriod.end}`);
-                
-                const response = await fetch(window.URLS.query_person_related_summary, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
-                    body: new URLSearchParams({ 
-                        cust_id: String(custId),
-                        start_date: tranPeriod.start,
-                        end_date: tranPeriod.end
-                    })
-                });
-                
-                const relatedData = await response.json();
-                if (relatedData.success) {
-                    window.renderPersonRelatedSection(relatedData.related_persons);
-                } else {
-                    console.error('Person related summary query failed:', relatedData.message);
-                    window.renderPersonRelatedSection(null);
-                }
-            } catch (error) {
-                console.error('Person related summary fetch failed:', error);
-                window.renderPersonRelatedSection(null);
-            }
-        }
-
-        extractTransactionPeriod() {
-            // Alert 데이터에서 TRAN_STRT와 TRAN_END 컬럼 찾기
-            if (!this.alertData) {
-                return { start: null, end: null };
-            }
-            
-            const { cols, rows } = this.alertData;
+        static extractTransactionPeriod(cols, rows) {
             const idxTranStart = cols.indexOf('TRAN_STRT');
             const idxTranEnd = cols.indexOf('TRAN_END');
             
             if (idxTranStart < 0 || idxTranEnd < 0) {
-                console.log('TRAN_STRT or TRAN_END columns not found');
                 return { start: null, end: null };
             }
             
             let minStart = null;
             let maxEnd = null;
             
-            // 모든 행에서 최소 시작일과 최대 종료일 찾기
             rows.forEach(row => {
                 const startDate = row[idxTranStart];
                 const endDate = row[idxTranEnd];
                 
-                // 날짜 유효성 검증
                 if (startDate && /^\d{4}-\d{2}-\d{2}/.test(startDate)) {
                     if (!minStart || startDate < minStart) {
                         minStart = startDate;
@@ -353,317 +177,354 @@
                 }
             });
             
-            // minStart에서 3개월 이전 날짜 계산
+            // 3개월 이전 날짜 계산
             if (minStart) {
                 const startDateObj = new Date(minStart);
-                startDateObj.setMonth(startDateObj.getMonth() - 3); // 3개월 이전
-                
-                // YYYY-MM-DD 형식으로 변환
-                const year = startDateObj.getFullYear();
-                const month = String(startDateObj.getMonth() + 1).padStart(2, '0');
-                const day = String(startDateObj.getDate()).padStart(2, '0');
-                minStart = `${year}-${month}-${day}`;
-                
-                // 타임스탬프 형식 추가
-                minStart = minStart + ' 00:00:00.000000000';
+                startDateObj.setMonth(startDateObj.getMonth() - 3);
+                minStart = startDateObj.toISOString().split('T')[0] + ' 00:00:00.000000000';
             }
             
-            // maxEnd 처리
             if (maxEnd) {
-                if (maxEnd.includes(' ')) {
-                    maxEnd = maxEnd;
-                } else {
-                    maxEnd = maxEnd + ' 23:59:59.999999999';
-                }
+                maxEnd = maxEnd.includes(' ') ? maxEnd : maxEnd + ' 23:59:59.999999999';
             }
-            
-            console.log(`Extracted transaction period (3 months before): ${minStart} ~ ${maxEnd}`);
             
             return { start: minStart, end: maxEnd };
         }
+    }
 
-        async fetchDuplicatePersons(custId, columns, row, custType) {
-            console.log(`Starting duplicate search for ${custType} customer...`);
-            
-            // 컬럼 인덱스 찾기
-            let emailIdx, phoneIdx, addressIdx, detailAddressIdx;
-            let workplaceNameIdx, workplaceAddressIdx, workplaceDetailAddressIdx;
-            
-            // 통합 고객 정보의 컬럼명 매핑
-            emailIdx = columns.indexOf('이메일');
-            phoneIdx = columns.indexOf('연락처');
-            addressIdx = columns.indexOf('거주지주소');
-            detailAddressIdx = columns.indexOf('거주지상세주소');
-            workplaceNameIdx = columns.indexOf('직장명');
-            workplaceAddressIdx = columns.indexOf('직장주소');
-            workplaceDetailAddressIdx = columns.indexOf('직장상세주소');
-            
-            // 값 추출
-            let fullEmail = '';
-            let phoneSuffix = '';
-            let address = '';
-            let detailAddress = '';
-            let workplaceName = '';
-            let workplaceAddress = '';
-            let workplaceDetailAddress = '';
-            
-            if (emailIdx >= 0 && row[emailIdx]) {
-                fullEmail = row[emailIdx];
-                console.log('Email found');
+    // ==================== ALERT 검색 매니저 ====================
+    class AlertSearchManager {
+        constructor() {
+            this.api = new APIClient();
+            this.state = new SearchState();
+            this.searchBtn = $('#alert_id_search_btn');
+            this.inputField = $('#alert_id_input');
+            this.init();
+        }
+
+        init() {
+            this.searchBtn?.addEventListener('click', () => this.search());
+            this.inputField?.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') this.search();
+            });
+        }
+
+        async search() {
+            // 이미 검색 중이면 중단
+            if (this.state.isSearching) {
+                console.log('Already searching, aborting previous search');
+                this.state.abort();
+                return;
             }
-            
-            if (phoneIdx >= 0 && row[phoneIdx]) {
-                const phone = String(row[phoneIdx]);
-                if (phone.length >= 4) {
-                    phoneSuffix = phone.slice(-4);
-                    console.log('Phone suffix:', phoneSuffix);
-                }
-            }
-            
-            if (addressIdx >= 0) {
-                address = row[addressIdx] || '';
-            }
-            
-            if (detailAddressIdx >= 0) {
-                detailAddress = row[detailAddressIdx] || '';
-            }
-            
-            if (workplaceNameIdx >= 0) {
-                workplaceName = row[workplaceNameIdx] || '';
-            }
-            
-            if (workplaceAddressIdx >= 0) {
-                workplaceAddress = row[workplaceAddressIdx] || '';
-            }
-            
-            if (workplaceDetailAddressIdx >= 0) {
-                workplaceDetailAddress = row[workplaceDetailAddressIdx] || '';
-            }
-            
-            // 조회할 조건이 하나도 없으면 빈 결과 반환
-            if (!fullEmail && !address && !workplaceName && !workplaceAddress) {
-                console.log('No search criteria found, skipping duplicate search');
-                window.renderDuplicatePersonsSection([], [], {});
+
+            // DB 연결 확인
+            if (!window.dualDBManager?.isOracleConnected()) {
+                UIManager.showError('먼저 Oracle DB 연결을 완료해 주세요.');
+                $('#btn-open-db-modal')?.click();
                 return;
             }
             
+            const alertId = this.inputField?.value?.trim();
+            if (!alertId) {
+                UIManager.showError('ALERT ID를 입력하세요.');
+                return;
+            }
+
+            // 이전 검색과 동일한 경우 무시
+            if (this.state.currentAlertId === alertId && this.state.alertData) {
+                console.log('Same alert ID, skipping search');
+                return;
+            }
+
+            // 상태 초기화 및 UI 초기화
+            this.state.reset();
+            this.state.currentAlertId = alertId;
+            this.state.setSearching(true);
+            UIManager.hideAllSections();
+            UIManager.showLoading(true);
+
             try {
-                const response = await fetch(window.URLS.query_duplicate_unified, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
-                    body: new URLSearchParams({
-                        current_cust_id: String(custId),
-                        full_email: fullEmail,
-                        phone_suffix: phoneSuffix,
-                        address: address,
-                        detail_address: detailAddress,
-                        workplace_name: workplaceName,
-                        workplace_address: workplaceAddress,
-                        workplace_detail_address: workplaceDetailAddress
-                    })
+                // 1. ALERT 정보 조회
+                const alertData = await this.api.post(window.URLS.query_alert, { alert_id: alertId });
+                
+                if (!alertData.success) {
+                    throw new Error(alertData.message || '조회 실패');
+                }
+
+                const cols = alertData.columns || [];
+                const rows = alertData.rows || [];
+                
+                if (rows.length === 0) {
+                    throw new Error('해당 ALERT ID에 대한 데이터가 없습니다.');
+                }
+
+                // 데이터 처리
+                const processedData = DataProcessor.processAlertData(cols, rows, alertId);
+                this.state.setAlertData({ cols, rows, ...processedData });
+
+                // 2. 모든 섹션 렌더링
+                await this.renderAllSections();
+                
+            } catch (error) {
+                console.error('Alert search error:', error);
+                UIManager.showError(error.message || '조회 중 오류가 발생했습니다.');
+                UIManager.hideAllSections();
+            } finally {
+                this.state.setSearching(false);
+                UIManager.showLoading(false);
+            }
+        }
+
+        async renderAllSections() {
+            const { cols, rows, repRuleId, custIdForPerson, canonicalIds } = this.state.alertData;
+            
+            // Promise 배열로 병렬 처리
+            const promises = [];
+
+            // 1. 고객 정보 조회
+            if (custIdForPerson) {
+                promises.push(this.fetchCustomerInfo(custIdForPerson));
+            }
+
+            // 2. Rule 히스토리 조회
+            if (canonicalIds.length > 0) {
+                promises.push(this.fetchRuleHistory(canonicalIds));
+            }
+
+            // 병렬 실행
+            await Promise.allSettled(promises);
+
+            // 3. 동기 렌더링 (Alert 데이터 기반)
+            this.renderSyncSections(cols, rows, repRuleId, canonicalIds);
+        }
+
+        async fetchCustomerInfo(custId) {
+            try {
+                const data = await this.api.post(window.URLS.query_customer_unified, { 
+                    cust_id: String(custId) 
                 });
                 
-                const result = await response.json();
-                console.log(`Found ${result.rows ? result.rows.length : 0} duplicate records`);
-                
-                if (result.success) {
-                    let emailPrefix = '';
-                    if (fullEmail) {
-                        const atIndex = fullEmail.indexOf('@');
-                        if (atIndex > 0) {
-                            emailPrefix = fullEmail.substring(0, atIndex);
+                if (data.success) {
+                    // 고객 정보 렌더링
+                    window.TableRenderer.renderCustomerUnified(data.columns || [], data.rows || []);
+                    
+                    // 고객 유형별 추가 조회
+                    const customerType = data.customer_type;
+                    const subPromises = [];
+                    
+                    if (customerType === '법인') {
+                        subPromises.push(this.fetchCorpRelated(custId));
+                    } else if (customerType === '개인') {
+                        const tranPeriod = DataProcessor.extractTransactionPeriod(
+                            this.state.alertData.cols, 
+                            this.state.alertData.rows
+                        );
+                        if (tranPeriod.start && tranPeriod.end) {
+                            subPromises.push(this.fetchPersonRelated(custId, tranPeriod));
                         }
                     }
                     
-                    const matchCriteria = {
-                        email_prefix: emailPrefix || null,
-                        full_email: fullEmail || null,
-                        phone_suffix: phoneSuffix || null,
-                        address: address || null,
-                        detail_address: detailAddress || null,
-                        workplace_name: workplaceName || null,
-                        workplace_address: workplaceAddress || null,
-                        workplace_detail_address: workplaceDetailAddress || null,
-                        customer_type: custType
-                    };
+                    // 중복 회원 검색
+                    if (data.rows && data.rows.length > 0) {
+                        subPromises.push(this.fetchDuplicatePersons(custId, data.columns, data.rows[0], customerType));
+                    }
                     
-                    window.renderDuplicatePersonsSection(result.columns, result.rows, matchCriteria);
-                } else {
-                    console.error('Duplicate query failed:', result.message);
-                    window.renderDuplicatePersonsSection([], [], {});
+                    // IP 접속 이력 및 Orderbook
+                    const memId = this.extractMID(data.columns, data.rows);
+                    if (memId) {
+                        const tranPeriod = DataProcessor.extractTransactionPeriod(
+                            this.state.alertData.cols, 
+                            this.state.alertData.rows
+                        );
+                        if (tranPeriod.start && tranPeriod.end) {
+                            subPromises.push(this.fetchIPHistory(memId, tranPeriod));
+                            
+                            if (window.dualDBManager?.isRedshiftConnected()) {
+                                subPromises.push(this.fetchOrderbook(memId, tranPeriod));
+                            }
+                        }
+                    }
+                    
+                    await Promise.allSettled(subPromises);
                 }
+            } catch (error) {
+                console.error('Customer info fetch failed:', error);
+                window.TableRenderer.renderCustomerUnified([], []);
+            }
+        }
+
+        async fetchRuleHistory(canonicalIds) {
+            try {
+                const ruleKey = canonicalIds.slice().sort().join(',');
+                const data = await this.api.post(window.URLS.rule_history, { rule_key: ruleKey });
                 
+                if (data.success) {
+                    window.TableRenderer.renderRuleHistory(
+                        data.columns || [], 
+                        data.rows || [],
+                        data.searched_rule || ruleKey,
+                        data.similar_list || null
+                    );
+                }
+            } catch (error) {
+                console.error('Rule history fetch failed:', error);
+                window.TableRenderer.renderRuleHistory([], [], '', null);
+            }
+        }
+
+        async fetchCorpRelated(custId) {
+            try {
+                const data = await this.api.post(window.URLS.query_corp_related_persons, { 
+                    cust_id: String(custId) 
+                });
+                if (data.success) {
+                    window.TableRenderer.renderCorpRelated(data.columns || [], data.rows || []);
+                }
+            } catch (error) {
+                console.error('Corp related fetch failed:', error);
+            }
+        }
+
+        async fetchPersonRelated(custId, tranPeriod) {
+            try {
+                const data = await this.api.post(window.URLS.query_person_related_summary, {
+                    cust_id: String(custId),
+                    start_date: tranPeriod.start,
+                    end_date: tranPeriod.end
+                });
+                if (data.success) {
+                    window.TableRenderer.renderPersonRelated(data.related_persons);
+                }
+            } catch (error) {
+                console.error('Person related fetch failed:', error);
+            }
+        }
+
+        async fetchDuplicatePersons(custId, columns, row, custType) {
+            try {
+                // 컬럼 인덱스 매핑
+                const params = this.extractDuplicateParams(columns, row);
+                params.current_cust_id = String(custId);
+                
+                const data = await this.api.post(window.URLS.query_duplicate_unified, params);
+                if (data.success) {
+                    const matchCriteria = this.buildMatchCriteria(params, custType);
+                    window.TableRenderer.renderDuplicatePersons(data.columns, data.rows, matchCriteria);
+                }
             } catch (error) {
                 console.error('Duplicate persons fetch failed:', error);
-                window.renderDuplicatePersonsSection([], [], {});
             }
         }
 
-        async fetchAndRenderAllSections(data) {
-            const { cols, rows, alertId, repRuleId, custIdForPerson, canonicalIds } = data;
-
-            // Promise.allSettled를 사용하여 병렬 처리 (에러가 있어도 계속 진행)
-            const promises = [];
-
-            // 통합 고객 정보 조회
-            if (custIdForPerson) {
-                promises.push(
-                    this.fetchCustomerInfo(custIdForPerson).catch(e => {
-                        console.error('Customer info failed:', e);
-                        window.renderCustomerUnifiedSection([], []);
-                    })
-                );
-            } else {
-                window.renderCustomerUnifiedSection([], []);
-            }
-
-            // RULE 히스토리 조회
-            if (canonicalIds.length > 0) {
-                const ruleKey = canonicalIds.slice().sort().join(',');
-                promises.push(
-                    fetch(window.URLS.rule_history, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                            'X-CSRFToken': getCookie('csrftoken')
-                        },
-                        body: new URLSearchParams({ rule_key: ruleKey })
-                    })
-                    .then(response => response.json())
-                    .then(historyData => {
-                        if (historyData.success) {
-                            window.renderRuleHistorySection(
-                                historyData.columns || [], 
-                                historyData.rows || [],
-                                historyData.searched_rule || ruleKey,
-                                historyData.similar_list || null
-                            );
-                        } else {
-                            window.renderRuleHistorySection([], [], ruleKey, null);
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Rule history fetch failed:', error);
-                        window.renderRuleHistorySection([], [], ruleKey, null);
-                    })
-                );
-            }
-
-            // 모든 비동기 작업 대기
-            await Promise.allSettled(promises);
-
-            // 동기 렌더링 섹션들 (Alert 데이터 기반)
-            const ruleObjMap = window.RULE_OBJ_MAP || {};
-            
-            // Alert 히스토리 렌더링
-            window.renderAlertHistSection(cols, rows, alertId);
-            
-            // 의심거래 객관식 렌더링
-            window.renderObjectivesSection(cols, rows, ruleObjMap, canonicalIds, repRuleId);
-            
-            // Rule 설명 렌더링
-            window.renderRuleDescSection(cols, rows, canonicalIds, repRuleId);
-        }
-
-        // fetchRedshiftOrderbook 메서드 - 분석까지 자동 수행
-        async fetchRedshiftOrderbook(memId, tranPeriod) {
-            // Redshift 연결 확인
-            if (!window.dualDBManager || !window.dualDBManager.isRedshiftConnected()) {
-                console.log('Redshift not connected, skipping orderbook query');
-                return null;
-            }
-            
-            if (!memId || !tranPeriod.start || !tranPeriod.end) {
-                console.log('Missing parameters for orderbook query');
-                return null;
-            }
-            
+        async fetchIPHistory(memId, tranPeriod) {
             try {
-                // 날짜 형식 변환 (YYYY-MM-DD 형식으로)
-                const startDate = tranPeriod.start.split(' ')[0];
-                const endDate = tranPeriod.end.split(' ')[0];
-                
-                console.log(`Fetching Redshift orderbook - MID: ${memId}, period: ${startDate} ~ ${endDate}`);
-                
-                // 1. Orderbook 데이터 조회 및 캐싱
-                const response = await fetch(window.URLS.query_redshift_orderbook, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
-                    body: new URLSearchParams({
-                        user_id: String(memId),
-                        tran_start: startDate,
-                        tran_end: endDate
-                    })
+                const data = await this.api.post(window.URLS.query_ip_access_history, {
+                    mem_id: String(memId),
+                    start_date: tranPeriod.start.split(' ')[0],
+                    end_date: tranPeriod.end.split(' ')[0]
                 });
-                
-                const result = await response.json();
-                
-                if (!result.success) {
-                    console.error('Orderbook query failed:', result.message);
-                    return null;
+                if (data.success) {
+                    window.TableRenderer.renderIPHistory(data.columns || [], data.rows || []);
                 }
-                
-                console.log(`Orderbook data cached successfully:`);
-                console.log(`  Cache key: ${result.cache_key}`);
-                console.log(`  Rows: ${result.rows_count}`);
-                
-                // 데이터가 없으면 여기서 종료
-                if (result.rows_count === 0) {
-                    console.log('No orderbook data found');
-                    return result;
-                }
-                
-                // 2. 자동으로 분석 수행
-                console.log('Analyzing orderbook data...');
-                const analysisResponse = await fetch(window.URLS.analyze_cached_orderbook, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
-                    body: new URLSearchParams({
-                        cache_key: result.cache_key
-                    })
-                });
-                
-                const analysisResult = await analysisResponse.json();
-                
-                if (analysisResult.success) {
-                    console.log(`Orderbook analysis completed: ${analysisResult.segments_count} segments`);
-                    
-                    // 3. 분석 결과를 화면에 표시
-                    window.renderOrderbookAnalysis(analysisResult);
-                    
-                    return analysisResult;
-                } else {
-                    console.error('Orderbook analysis failed:', analysisResult.message);
-                    return result;
-                }
-                
             } catch (error) {
-                console.error('Orderbook fetch/analysis error:', error);
-                return null;
+                console.error('IP history fetch failed:', error);
             }
+        }
+
+        async fetchOrderbook(memId, tranPeriod) {
+            try {
+                // 1. Orderbook 조회 및 캐싱
+                const response = await this.api.post(window.URLS.query_redshift_orderbook, {
+                    user_id: String(memId),
+                    tran_start: tranPeriod.start.split(' ')[0],
+                    tran_end: tranPeriod.end.split(' ')[0]
+                });
+                
+                if (response.success && response.rows_count > 0) {
+                    // 2. 분석 실행
+                    const analysis = await this.api.post(window.URLS.analyze_cached_orderbook, {
+                        cache_key: response.cache_key
+                    });
+                    
+                    if (analysis.success) {
+                        window.TableRenderer.renderOrderbookAnalysis(analysis);
+                    }
+                }
+            } catch (error) {
+                console.error('Orderbook fetch/analysis failed:', error);
+            }
+        }
+
+        renderSyncSections(cols, rows, repRuleId, canonicalIds) {
+            const ruleObjMap = window.RULE_OBJ_MAP || {};
+            const alertId = this.state.currentAlertId;
+            
+            // Alert 히스토리
+            window.TableRenderer.renderAlertHistory(cols, rows, alertId);
+            
+            // 의심거래 객관식
+            window.TableRenderer.renderObjectives(cols, rows, ruleObjMap, canonicalIds, repRuleId);
+            
+            // Rule 설명
+            window.TableRenderer.renderRuleDesc(cols, rows, canonicalIds, repRuleId);
+        }
+
+        // === 헬퍼 메서드 ===
+        extractMID(columns, rows) {
+            if (!rows || rows.length === 0) return null;
+            const midIdx = columns.indexOf('MID');
+            return midIdx >= 0 ? rows[0][midIdx] : null;
+        }
+
+        extractDuplicateParams(columns, row) {
+            const getColumnValue = (colName) => {
+                const idx = columns.indexOf(colName);
+                return idx >= 0 ? (row[idx] || '') : '';
+            };
+            
+            const phone = getColumnValue('연락처');
+            const phoneSuffix = phone.length >= 4 ? phone.slice(-4) : '';
+            
+            return {
+                full_email: getColumnValue('이메일'),
+                phone_suffix: phoneSuffix,
+                address: getColumnValue('거주지주소'),
+                detail_address: getColumnValue('거주지상세주소'),
+                workplace_name: getColumnValue('직장명'),
+                workplace_address: getColumnValue('직장주소'),
+                workplace_detail_address: getColumnValue('직장상세주소') || ''
+            };
+        }
+
+        buildMatchCriteria(params, custType) {
+            return {
+                email_prefix: params.full_email ? params.full_email.split('@')[0] : null,
+                full_email: params.full_email || null,
+                phone_suffix: params.phone_suffix || null,
+                address: params.address || null,
+                detail_address: params.detail_address || null,
+                workplace_name: params.workplace_name || null,
+                workplace_address: params.workplace_address || null,
+                workplace_detail_address: params.workplace_detail_address || null,
+                customer_type: custType
+            };
         }
     }
 
     // ==================== 초기화 ====================
     document.addEventListener('DOMContentLoaded', function() {
-        // Alert 검색 매니저만 생성 (DB 연결은 dual_db_manager.js에서 처리)
-        window.alertManager = new AlertSearchManager();
-
-        // 초기 상태: 섹션 숨김
-        document.querySelectorAll('.section').forEach(section => {
-            section.style.display = 'none';
-        });
-
-        console.log('Menu1_1 page initialized with dual DB support');
+        // TableRenderer가 로드될 때까지 대기
+        const initInterval = setInterval(() => {
+            if (window.TableRenderer) {
+                clearInterval(initInterval);
+                window.alertManager = new AlertSearchManager();
+                
+                // 초기 상태: 섹션 숨김
+                UIManager.hideAllSections();
+                
+                console.log('Menu1_1 initialized with refactored architecture');
+            }
+        }, 100);
     });
 
 })();
