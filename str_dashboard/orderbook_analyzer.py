@@ -147,7 +147,14 @@ class OrderbookAnalyzer:
                     'count': 0
                 }
             
-            quantity = row['trade_quantity'] if pd.notna(row['trade_quantity']) else 0
+            # 수량 처리 수정: 가상자산 입출금(5,6)은 trade_amount 사용
+            if trans_cat in [5, 6]:  # 가상자산 입출금
+                quantity = row['trade_amount'] if pd.notna(row['trade_amount']) else 0
+            elif trans_cat in [3, 4]:  # 원화입출금
+                quantity = 0
+            else:  # 매수(1), 매도(2)
+                quantity = row['trade_quantity'] if pd.notna(row['trade_quantity']) else 0
+            
             amount = row['trade_amount'] if pd.notna(row['trade_amount']) else 0
             amount_krw = row['trade_amount_krw'] if pd.notna(row['trade_amount_krw']) else 0
             
@@ -289,9 +296,12 @@ class OrderbookAnalyzer:
                         'count': 0
                     }
                 
-                if trans_cat in [3, 4]:  # 원화입출금 - 수량 무시
+                # 수량 처리 수정: 가상자산 입출금(5,6)은 trade_amount 사용
+                if trans_cat in [5, 6]:  # 가상자산 입출금
+                    quantity = row['trade_amount'] if pd.notna(row['trade_amount']) else 0
+                elif trans_cat in [3, 4]:  # 원화입출금 - 수량 무시
                     quantity = 0
-                else:
+                else:  # 매수(1), 매도(2)
                     quantity = row['trade_quantity'] if pd.notna(row['trade_quantity']) else 0
                 
                 amount_krw = row['trade_amount_krw'] if pd.notna(row['trade_amount_krw']) else 0
@@ -364,9 +374,12 @@ class OrderbookAnalyzer:
                     'count': 0
                 }
             
-            if trans_cat in [3, 4]:  # 원화입출금
+            # 수량 처리 수정
+            if trans_cat in [5, 6]:  # 가상자산 입출금
+                quantity = row['trade_amount'] if pd.notna(row['trade_amount']) else 0
+            elif trans_cat in [3, 4]:  # 원화입출금
                 quantity = 0
-            else:
+            else:  # 매수, 매도
                 quantity = row['trade_quantity'] if pd.notna(row['trade_quantity']) else 0
             
             amount_krw = row['trade_amount_krw'] if pd.notna(row['trade_amount_krw']) else 0
@@ -421,7 +434,8 @@ class OrderbookAnalyzer:
         for _, row in filtered_df.iterrows():
             ticker = row.get('ticker_nm', 'Unknown')
             datetime_str = row['trade_datetime'].strftime('%Y-%m-%d %H:%M:%S')
-            quantity = row['trade_quantity'] if pd.notna(row['trade_quantity']) else 0
+            # 가상자산 입출금은 trade_amount 사용
+            quantity = row['trade_amount'] if pd.notna(row['trade_amount']) else 0
             amount_krw = row['trade_amount_krw'] if pd.notna(row['trade_amount_krw']) else 0
             
             details.append({

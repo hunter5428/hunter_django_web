@@ -353,15 +353,22 @@
                 }
             });
             
-            // 날짜 형식 변환 (타임스탬프 형식 확인)
+            // minStart에서 3개월 이전 날짜 계산
             if (minStart) {
-                if (minStart.includes(' ')) {
-                    minStart = minStart;
-                } else {
-                    minStart = minStart + ' 00:00:00.000000000';
-                }
+                const startDateObj = new Date(minStart);
+                startDateObj.setMonth(startDateObj.getMonth() - 3); // 3개월 이전
+                
+                // YYYY-MM-DD 형식으로 변환
+                const year = startDateObj.getFullYear();
+                const month = String(startDateObj.getMonth() + 1).padStart(2, '0');
+                const day = String(startDateObj.getDate()).padStart(2, '0');
+                minStart = `${year}-${month}-${day}`;
+                
+                // 타임스탬프 형식 추가
+                minStart = minStart + ' 00:00:00.000000000';
             }
             
+            // maxEnd 처리
             if (maxEnd) {
                 if (maxEnd.includes(' ')) {
                     maxEnd = maxEnd;
@@ -370,7 +377,7 @@
                 }
             }
             
-            console.log(`Extracted transaction period: ${minStart} ~ ${maxEnd}`);
+            console.log(`Extracted transaction period (3 months before): ${minStart} ~ ${maxEnd}`);
             
             return { start: minStart, end: maxEnd };
         }

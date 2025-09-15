@@ -811,11 +811,12 @@
      * 섹션 토글 기능 초기화
      */
     function initSectionToggle() {
-        document.querySelectorAll('.section h3').forEach(header => {
-            header.addEventListener('click', function() {
-                const section = this.parentElement;
+        // 이벤트 위임 방식으로 변경 (동적으로 생성되는 섹션도 처리)
+        document.addEventListener('click', function(e) {
+            if (e.target.matches('.section h3')) {
+                const section = e.target.parentElement;
                 section.classList.toggle('collapsed');
-            });
+            }
         });
     }
 
@@ -1147,19 +1148,19 @@
 
 
     // Orderbook 분석 결과 렌더링 함수
+    // 기존 코드의 섹션 생성 부분을 다음과 같이 수정
     window.renderOrderbookAnalysis = function(analysisResult) {
-        // 패턴 분석 섹션 찾기 또는 생성
+        // 1. 거래원장 개요 섹션
         let patternSection = document.getElementById('section_orderbook_patterns');
         if (!patternSection) {
             patternSection = document.createElement('div');
             patternSection.id = 'section_orderbook_patterns';
             patternSection.className = 'section';
             patternSection.innerHTML = `
-                <h3>거래원장(Orderbook) 분석</h3>
+                <h3>거래원장(Orderbook) 개요</h3>
                 <div class="table-wrap" id="result_orderbook_patterns"></div>
             `;
             
-            // IP 접속 이력 섹션 다음에 추가
             const ipSection = document.getElementById('section_ip_access_history');
             if (ipSection && ipSection.parentNode) {
                 ipSection.parentNode.insertBefore(patternSection, ipSection.nextSibling);
@@ -1168,38 +1169,57 @@
             }
         }
         
-        // 구간별 상세 섹션 찾기 또는 생성 
+        // 2. 일자별 현황 섹션 (새로 추가)
+        let dailySection = document.getElementById('section_orderbook_daily');
+        if (!dailySection) {
+            dailySection = document.createElement('div');
+            dailySection.id = 'section_orderbook_daily';
+            dailySection.className = 'section collapsed'; // 기본 접힘
+            dailySection.innerHTML = `
+                <h3>일자별 매수/매도, 입출금 현황</h3>
+                <div class="table-wrap" id="result_orderbook_daily"></div>
+            `;
+            
+            if (patternSection && patternSection.parentNode) {
+                patternSection.parentNode.insertBefore(dailySection, patternSection.nextSibling);
+            }
+        }
+        
+        // 3. 구간별 상세 섹션
         let segmentSection = document.getElementById('section_orderbook_segments');
         if (!segmentSection) {
             segmentSection = document.createElement('div');
             segmentSection.id = 'section_orderbook_segments';
-            segmentSection.className = 'section collapsed'; // 기본 접힘
+            segmentSection.className = 'section collapsed';
             segmentSection.innerHTML = `
                 <h3>구간별 상세 내역</h3>
                 <div class="table-wrap" id="result_orderbook_segments"></div>
             `;
             
-            // 패턴 섹션 다음에 추가
-            if (patternSection && patternSection.parentNode) {
-                patternSection.parentNode.insertBefore(segmentSection, patternSection.nextSibling);
+            if (dailySection && dailySection.parentNode) {
+                dailySection.parentNode.insertBefore(segmentSection, dailySection.nextSibling);
             }
         }
         
         // 섹션 표시
         patternSection.style.display = 'block';
+        dailySection.style.display = 'block';
         segmentSection.style.display = 'block';
         
         // 렌더링 컴포넌트 생성
         const patternRenderer = new OrderbookPatternRenderer('result_orderbook_patterns');
+        const dailyRenderer = new OrderbookDailyRenderer('result_orderbook_daily'); // 새로운 렌더러
         const segmentRenderer = new OrderbookSegmentRenderer('result_orderbook_segments');
         
         // 데이터 렌더링
         patternRenderer.render(analysisResult);
+        dailyRenderer.render(analysisResult); // 일자별 현황은 별도 렌더러로
         segmentRenderer.render(analysisResult);
         
-        // 전역 데이터 저장 (이벤트 핸들러용)
+        // 전역 데이터 저장
         window.orderbookAnalysisData = analysisResult;
     };
+
 
     // Orderbook 패턴 렌더러
     class OrderbookPatternRenderer {
@@ -1243,7 +1263,7 @@
                     html += `
                         <div class="pattern-stat-card" data-action="${item.key}">
                             <div class="pattern-stat-label">${item.label}</div>
-                            <div class="pattern-stat-value">${item.amount.toLocaleString('ko-KR')}원</div>
+                            <div class="pattern-stat-value">${formatAmountWithUnit(item.amount)}</div>
                             <div class="pattern-stat-count">${item.count.toLocaleString('ko-KR')}건</div>
                             <div class="pattern-detail" id="pattern-detail-${item.key}"></div>
                         </div>`;
@@ -1540,6 +1560,32 @@
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+    // formatAmount 헬퍼 함수 추가 (클래스 외부에)
+    function formatAmountWithUnit(amount) {
+        const absAmount = Math.abs(amount);
+        let mainText = '';
+        let unitText = '';
+        
+        if (absAmount >= 100000000) { // 1억 이상
+            mainText = Math.floor(absAmount / 100000000).toLocaleString('ko-KR');
+            unitText = '억원';
+            const remainder = Math.floor((absAmount % 100000000) / 10000000);
+            if (remainder > 0) {
+                unitText += ` <span style="font-size: 0.8em; color: #999;">(+${remainder}천만)</span>`;
+            }
+        } else if (absAmount >= 10000000) { // 1천만 이상
+            mainText = Math.floor(absAmount / 10000000).toLocaleString('ko-KR');
+            unitText = '천만원';
+        } else if (absAmount >= 1000000) { // 100만 이상
+            mainText = Math.floor(absAmount / 1000000).toLocaleString('ko-KR');
+            unitText = '백만원';
+        } else {
+            mainText = absAmount.toLocaleString('ko-KR');
+            unitText = '원';
+        }
+        
+        return `${mainText}${unitText}`;
     }
 
     // DOM 준비 후 섹션 토글 초기화 (중복 방지)
