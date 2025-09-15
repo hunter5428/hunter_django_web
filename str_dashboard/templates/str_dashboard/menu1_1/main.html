@@ -6,6 +6,7 @@
 <link rel="stylesheet" href="{% static 'str_dashboard/css/table.component.css' %}">
 <link rel="stylesheet" href="{% static 'str_dashboard/css/customer_unified.css' %}">
 <link rel="stylesheet" href="{% static 'str_dashboard/css/orderbook.css' %}">
+<link rel="stylesheet" href="{% static 'str_dashboard/css/alert_orderbook.css' %}">
 <style>
 /* 듀얼 DB 연결 모달 스타일 */
 .dual-db-modal .modal {
@@ -310,7 +311,8 @@ window.URLS = {
     get_cached_orderbook_info: "{% url 'get_cached_orderbook_info' %}",
     clear_orderbook_cache: "{% url 'clear_orderbook_cache' %}",
     analyze_cached_orderbook: "{% url 'analyze_cached_orderbook' %}",
-    get_orderbook_summary: "{% url 'get_orderbook_summary' %}"
+    get_orderbook_summary: "{% url 'get_orderbook_summary' %}",
+    analyze_alert_orderbook: "{% url 'analyze_alert_orderbook' %}"
 };
 </script>
 

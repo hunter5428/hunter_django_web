@@ -590,43 +590,9 @@ def format_related_person_summary(related_persons):
     return "\n".join(lines)
 
 
-def get_db_status(request) -> dict:
-    """현재 데이터베이스 연결 상태 조회"""
-    db_info = request.session.get('db_conn')
-    status = request.session.get('db_conn_status', 'need')
-    
-    if status == 'ok' and db_info:
-        return {
-            'connected': True,
-            'status': status,
-            'username': db_info.get('username', 'Unknown'),
-            'jdbc_url': db_info.get('jdbc_url', '')
-        }
-    
-    return {
-        'connected': False,
-        'status': status,
-        'username': None,
-        'jdbc_url': None
-    }
 
+# views.py Part 2 - query_ip_access_history부터 끝까지
 
-@login_required
-def check_db_status(request):
-    """데이터베이스 연결 상태 확인 API (AJAX용)"""
-    return JsonResponse(get_db_status(request))
-
-
-def clear_db_session(request):
-    """데이터베이스 세션 정보 초기화 (Oracle + Redshift)"""
-    keys_to_clear = ['db_conn', 'db_conn_status', 'rs_conn', 'rs_conn_status']
-    for key in keys_to_clear:
-        if key in request.session:
-            del request.session[key]
-    logger.info("All database sessions cleared")
-
-
-# str_dashboard/views.py에 추가할 함수
 @login_required
 @require_POST
 @require_db_connection
@@ -683,7 +649,6 @@ def query_ip_access_history(request, oracle_conn=None):
             'success': False,
             'message': f'IP 조회 중 오류: {e}'
         })
-    
 
 
 @login_required
@@ -746,8 +711,6 @@ def test_redshift_connection(request):
             'success': False,
             'message': f'연결 실패: {str(e)}'
         })
-    
-
 
 
 @login_required
@@ -868,9 +831,7 @@ def connect_all_databases(request):
             'redshift_status': redshift_status,
             'redshift_error': redshift_error
         })
-    
 
-    
 
 def get_db_status(request) -> dict:
     """현재 데이터베이스 연결 상태 조회 (Oracle + Redshift)"""
@@ -898,15 +859,25 @@ def get_db_status(request) -> dict:
         }
     }
 
-# views.py에 추가할 내용
 
-# Import 섹션에 추가
-import pandas as pd
-from datetime import datetime, timedelta
-from pathlib import Path
+@login_required
+def check_db_status(request):
+    """데이터베이스 연결 상태 확인 API (AJAX용)"""
+    return JsonResponse(get_db_status(request))
+
+
+def clear_db_session(request):
+    """데이터베이스 세션 정보 초기화 (Oracle + Redshift)"""
+    keys_to_clear = ['db_conn', 'db_conn_status', 'rs_conn', 'rs_conn_status']
+    for key in keys_to_clear:
+        if key in request.session:
+            del request.session[key]
+    logger.info("All database sessions cleared")
+
 
 # 전역 변수로 DataFrame 저장소 추가 (클래스나 캐시 시스템으로 개선 가능)
 ORDERBOOK_CACHE = {}
+
 
 @login_required
 @require_POST
@@ -914,6 +885,7 @@ def query_redshift_orderbook(request):
     """
     Redshift에서 Orderbook 데이터 조회
     Alert 데이터의 거래 기간 + 1일을 기준으로 조회
+    특정 RULE ID (IO000, IO111)의 경우 12개월 이전 데이터 조회
     """
     # 파라미터 추출
     user_id = request.POST.get('user_id', '').strip()
@@ -1079,8 +1051,6 @@ def get_orderbook_dataframe(cache_key: str) -> Optional[pd.DataFrame]:
     return None
 
 
-# views.py의 analyze_cached_orderbook 함수 수정 부분
-
 @login_required
 @require_POST
 def analyze_cached_orderbook(request):
@@ -1120,12 +1090,28 @@ def analyze_cached_orderbook(request):
         # 일자별 요약 가져오기
         daily_summary = analyzer.get_daily_summary()
         
+        # 기간 정보 추출 (MIN - 3개월 ~ MAX)
+        period_info = {}
+        if not df.empty and 'trade_date' in df.columns:
+            # 실제 데이터의 최소/최대 날짜
+            min_date = pd.to_datetime(df['trade_date']).min()
+            max_date = pd.to_datetime(df['trade_date']).max()
+            
+            # 표시용 날짜 포맷
+            period_info = {
+                'start_date': min_date.strftime('%Y-%m-%d'),
+                'end_date': max_date.strftime('%Y-%m-%d'),
+                'actual_start': min_date,
+                'actual_end': max_date
+            }
+        
         # 결과를 캐시에 추가 저장
         if cache_key in ORDERBOOK_CACHE:
             ORDERBOOK_CACHE[cache_key]['analysis'] = {
                 'text_summary': text_summary,
                 'patterns': patterns,
                 'daily_summary': daily_summary,
+                'period_info': period_info,
                 'analyzed_at': datetime.now()
             }
         
@@ -1139,7 +1125,8 @@ def analyze_cached_orderbook(request):
             'cache_key': cache_key,
             'daily_summary': daily_json,
             'text_summary': text_summary,
-            'patterns': patterns
+            'patterns': patterns,
+            'period_info': period_info
         })
         
     except Exception as e:
@@ -1194,7 +1181,108 @@ def get_orderbook_summary(request):
     })
 
 
-
-
-
-
+@login_required
+@require_POST
+def analyze_alert_orderbook(request):
+    """
+    특정 ALERT ID에 대한 Orderbook 상세 분석
+    """
+    alert_id = request.POST.get('alert_id', '').strip()
+    start_date = request.POST.get('start_date', '').strip()
+    end_date = request.POST.get('end_date', '').strip()
+    cache_key = request.POST.get('cache_key', '').strip()
+    
+    if not all([alert_id, start_date, end_date, cache_key]):
+        return JsonResponse({
+            'success': False,
+            'message': 'Missing required parameters'
+        })
+    
+    # 캐시에서 DataFrame 가져오기
+    df = get_orderbook_dataframe(cache_key)
+    
+    if df is None:
+        return JsonResponse({
+            'success': False,
+            'message': f'캐시된 데이터를 찾을 수 없습니다: {cache_key}'
+        })
+    
+    try:
+        # 기간 필터링
+        df_filtered = df[
+            (pd.to_datetime(df['trade_date']) >= pd.to_datetime(start_date)) &
+            (pd.to_datetime(df['trade_date']) <= pd.to_datetime(end_date))
+        ].copy()
+        
+        if df_filtered.empty:
+            return JsonResponse({
+                'success': True,
+                'alert_id': alert_id,
+                'detail': {
+                    'summary': {
+                        'buy_amount': 0, 'buy_count': 0,
+                        'sell_amount': 0, 'sell_count': 0,
+                        'deposit_krw': 0, 'deposit_krw_count': 0,
+                        'withdraw_krw': 0, 'withdraw_krw_count': 0,
+                        'deposit_crypto': 0, 'deposit_crypto_count': 0,
+                        'withdraw_crypto': 0, 'withdraw_crypto_count': 0
+                    },
+                    'by_ticker': {}
+                }
+            })
+        
+        # 분석 실행
+        analyzer = OrderbookAnalyzer(df_filtered)
+        analyzer.analyze()
+        patterns = analyzer.get_pattern_analysis()
+        
+        # 종목별 상세 정리
+        by_ticker = {
+            'buy': patterns.get('buy_details', [])[:10],
+            'sell': patterns.get('sell_details', [])[:10],
+            'deposit': patterns.get('deposit_crypto_details', [])[:10],
+            'withdraw': patterns.get('withdraw_crypto_details', [])[:10]
+        }
+        
+        # 종목별 데이터를 딕셔너리로 변환
+        for action in by_ticker:
+            by_ticker[action] = [
+                {
+                    'ticker': ticker,
+                    'amount': data['amount_krw'],
+                    'count': data['count']
+                }
+                for ticker, data in by_ticker[action]
+            ]
+        
+        detail = {
+            'summary': {
+                'buy_amount': patterns.get('total_buy_amount', 0),
+                'buy_count': patterns.get('total_buy_count', 0),
+                'sell_amount': patterns.get('total_sell_amount', 0),
+                'sell_count': patterns.get('total_sell_count', 0),
+                'deposit_krw': patterns.get('total_deposit_krw', 0),
+                'deposit_krw_count': patterns.get('total_deposit_krw_count', 0),
+                'withdraw_krw': patterns.get('total_withdraw_krw', 0),
+                'withdraw_krw_count': patterns.get('total_withdraw_krw_count', 0),
+                'deposit_crypto': patterns.get('total_deposit_crypto', 0),
+                'deposit_crypto_count': patterns.get('total_deposit_crypto_count', 0),
+                'withdraw_crypto': patterns.get('total_withdraw_crypto', 0),
+                'withdraw_crypto_count': patterns.get('total_withdraw_crypto_count', 0)
+            },
+            'by_ticker': by_ticker
+        }
+        
+        return JsonResponse({
+            'success': True,
+            'alert_id': alert_id,
+            'period': f"{start_date} ~ {end_date}",
+            'detail': detail
+        })
+        
+    except Exception as e:
+        logger.exception(f"Error analyzing alert orderbook: {e}")
+        return JsonResponse({
+            'success': False,
+            'message': f'분석 중 오류: {str(e)}'
+        })

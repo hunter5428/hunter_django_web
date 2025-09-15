@@ -152,6 +152,7 @@
         static extractTransactionPeriod(cols, rows) {
             const idxTranStart = cols.indexOf('TRAN_STRT');
             const idxTranEnd = cols.indexOf('TRAN_END');
+            const idxRuleId = cols.indexOf('STR_RULE_ID');
             
             if (idxTranStart < 0 || idxTranEnd < 0) {
                 return { start: null, end: null };
@@ -159,6 +160,17 @@
             
             let minStart = null;
             let maxEnd = null;
+            let hasSpecialRule = false;
+            
+            // 특정 RULE ID 체크
+            if (idxRuleId >= 0) {
+                rows.forEach(row => {
+                    const ruleId = row[idxRuleId];
+                    if (ruleId === 'IO000' || ruleId === 'IO111') {
+                        hasSpecialRule = true;
+                    }
+                });
+            }
             
             rows.forEach(row => {
                 const startDate = row[idxTranStart];
@@ -177,10 +189,12 @@
                 }
             });
             
-            // 3개월 이전 날짜 계산
+            // 특정 RULE ID가 있으면 12개월, 없으면 3개월 이전
+            const monthsBack = hasSpecialRule ? 12 : 3;
+            
             if (minStart) {
                 const startDateObj = new Date(minStart);
-                startDateObj.setMonth(startDateObj.getMonth() - 3);
+                startDateObj.setMonth(startDateObj.getMonth() - monthsBack);
                 minStart = startDateObj.toISOString().split('T')[0] + ' 00:00:00.000000000';
             }
             
@@ -188,7 +202,7 @@
                 maxEnd = maxEnd.includes(' ') ? maxEnd : maxEnd + ' 23:59:59.999999999';
             }
             
-            return { start: minStart, end: maxEnd };
+            return { start: minStart, end: maxEnd, monthsBack };
         }
     }
 
@@ -447,7 +461,8 @@
                     });
                     
                     if (analysis.success) {
-                        window.TableRenderer.renderOrderbookAnalysis(analysis);
+                        // ALERT 데이터와 함께 전달
+                        window.TableRenderer.renderOrderbookAnalysis(analysis, this.state.alertData);
                     }
                 }
             } catch (error) {

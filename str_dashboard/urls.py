@@ -38,7 +38,9 @@ urlpatterns = [
     path('api/query_redshift_orderbook/', views.query_redshift_orderbook, name='query_redshift_orderbook'),
     path('api/get_cached_orderbook_info/', views.get_cached_orderbook_info, name='get_cached_orderbook_info'),
     path('api/clear_orderbook_cache/', views.clear_orderbook_cache, name='clear_orderbook_cache'),
-    # Orderbook Analysis APIs (기존 Orderbook APIs 섹션에 추가)
+    
+    # Orderbook Analysis APIs
     path('api/analyze_cached_orderbook/', views.analyze_cached_orderbook, name='analyze_cached_orderbook'),
     path('api/get_orderbook_summary/', views.get_orderbook_summary, name='get_orderbook_summary'),
+    path('api/analyze_alert_orderbook/', views.analyze_alert_orderbook, name='analyze_alert_orderbook'),
 ]

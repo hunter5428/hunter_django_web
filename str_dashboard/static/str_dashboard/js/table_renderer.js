@@ -1,5 +1,5 @@
 // str_dashboard/static/str_dashboard/js/table_renderer.js
-// 테이블 렌더링 전용 모듈 - 구간별 분석 제거, 금액 표시 개선
+// 테이블 렌더링 전용 모듈 - ALERT ID별 매매/입출고 현황 추가
 
 (function(window) {
     'use strict';
@@ -589,19 +589,24 @@
             }
         }
 
-        // Orderbook 분석 - 구간별 분석 제거
-        static renderOrderbookAnalysis(analysisResult) {
-            // 동적으로 섹션 생성 (구간별 제외)
+        // Orderbook 분석 - ALERT ID별 현황 추가
+        static renderOrderbookAnalysis(analysisResult, alertData) {
+            // 동적으로 섹션 생성
             this._createOrderbookSections();
             
+            // 기간 정보 추출
+            const periodInfo = analysisResult.period_info || {};
+            
             // 각 섹션 렌더링
-            this._renderOrderbookPatterns(analysisResult);
+            this._renderOrderbookPatterns(analysisResult, periodInfo);
+            this._renderAlertOrderbook(analysisResult, alertData);  // 새로운 섹션
             this._renderOrderbookDaily(analysisResult);
         }
 
         static _createOrderbookSections() {
             const sections = [
                 { id: 'section_orderbook_patterns', title: '거래원장(Orderbook) 개요', collapsed: false },
+                { id: 'section_alert_orderbook', title: 'ALERT ID별 매매/입출고 현황', collapsed: false },  // 새로운 섹션
                 { id: 'section_orderbook_daily', title: '일자별 매수/매도, 입출금 현황', collapsed: true }
             ];
             
@@ -627,11 +632,20 @@
             });
         }
 
-        static _renderOrderbookPatterns(data) {
+        static _renderOrderbookPatterns(data, periodInfo) {
             const container = document.getElementById('result_orderbook_patterns');
             if (!container || !data.patterns) return;
             
-            document.getElementById('section_orderbook_patterns').style.display = 'block';
+            const section = document.getElementById('section_orderbook_patterns');
+            if (section) {
+                section.style.display = 'block';
+                
+                // 제목에 기간 정보 추가
+                const h3 = section.querySelector('h3');
+                if (h3 && periodInfo.start_date && periodInfo.end_date) {
+                    h3.textContent = `거래원장(Orderbook) 개요 (${periodInfo.start_date} ~ ${periodInfo.end_date})`;
+                }
+            }
             
             // 패턴 카드 HTML 생성
             const items = [
@@ -677,6 +691,240 @@
                     }
                 });
             });
+        }
+
+        // 새로운 메서드: ALERT ID별 매매/입출고 현황
+        static _renderAlertOrderbook(analysisResult, alertData) {
+            const container = document.getElementById('result_alert_orderbook');
+            if (!container) return;
+            
+            const section = document.getElementById('section_alert_orderbook');
+            if (section) section.style.display = 'block';
+            
+            // alertData가 없으면 빈 메시지
+            if (!alertData || !alertData.rows || alertData.rows.length === 0) {
+                container.innerHTML = '<div class="card empty-row">ALERT 데이터가 없습니다.</div>';
+                return;
+            }
+            
+            const cols = alertData.cols;
+            const rows = alertData.rows;
+            const repAlertId = alertData.repAlertId;
+            
+            // 필요한 컬럼 인덱스
+            const idxAlertId = cols.indexOf('STR_ALERT_ID');
+            const idxRuleId = cols.indexOf('STR_RULE_ID');
+            const idxStdsDtm = cols.indexOf('STDS_DTM');
+            const idxTranStart = cols.indexOf('TRAN_STRT');
+            const idxTranEnd = cols.indexOf('TRAN_END');
+            
+            let html = '';
+            
+            // 대표 ALERT ID 상세내역 먼저 표시
+            if (repAlertId) {
+                const repRow = rows.find(r => String(r[idxAlertId]) === String(repAlertId));
+                if (repRow && analysisResult.alert_details && analysisResult.alert_details[repAlertId]) {
+                    html += `<div class="alert-detail-section">
+                        <h4 style="color: #4fc3f7; margin-bottom: 10px;">◆ 대표 ALERT ID (${repAlertId}) 상세내역</h4>
+                        ${this._renderAlertDetail(analysisResult.alert_details[repAlertId])}
+                    </div>`;
+                }
+            }
+            
+            // ALERT ID 목록 테이블
+            html += '<div style="margin-top: 20px;">';
+            html += '<table class="table alert-orderbook-table"><thead><tr>';
+            html += '<th>STDS_DTM</th><th>STR_ALERT_ID</th><th>STR_RULE_ID</th>';
+            html += '<th>TRAN_STRT</th><th>TRAN_END</th><th>조회기간</th>';
+            html += '</tr></thead><tbody>';
+            
+            // 각 ALERT ID별로 행 생성
+            const uniqueAlerts = new Map();
+            rows.forEach(row => {
+                const alertId = row[idxAlertId];
+                if (!uniqueAlerts.has(alertId)) {
+                    uniqueAlerts.set(alertId, row);
+                }
+            });
+            
+            uniqueAlerts.forEach((row, alertId) => {
+                const ruleId = row[idxRuleId];
+                const tranStart = row[idxTranStart];
+                const tranEnd = row[idxTranEnd];
+                
+                // 조회 기간 계산 (특정 RULE ID는 12개월, 나머지는 3개월)
+                const monthsBack = (ruleId === 'IO000' || ruleId === 'IO111') ? 12 : 3;
+                const queryPeriod = this._calculateQueryPeriod(tranStart, tranEnd, monthsBack);
+                
+                const isRep = String(alertId) === String(repAlertId);
+                html += `<tr class="${isRep ? 'rep-row' : ''}" data-alert-id="${alertId}" 
+                         data-rule-id="${ruleId}" data-period-start="${queryPeriod.start}" 
+                         data-period-end="${queryPeriod.end}">`;
+                html += `<td>${row[idxStdsDtm] || ''}</td>`;
+                html += `<td class="clickable-alert" style="cursor: pointer; color: #4fc3f7; text-decoration: underline;">
+                         ${alertId}</td>`;
+                html += `<td>${ruleId || ''}</td>`;
+                html += `<td>${tranStart || ''}</td>`;
+                html += `<td>${tranEnd || ''}</td>`;
+                html += `<td style="font-size: 11px; color: #9a9a9a;">${queryPeriod.display}</td>`;
+                html += '</tr>';
+                
+                // 상세 행 (숨김 상태)
+                html += `<tr class="alert-detail-row" id="detail-row-${alertId}" style="display: none;">`;
+                html += `<td colspan="6"><div id="alert-detail-${alertId}" class="alert-detail-content">
+                         <div style="text-align: center; color: #9a9a9a;">로딩 중...</div></div></td>`;
+                html += '</tr>';
+            });
+            
+            html += '</tbody></table></div>';
+            
+            container.innerHTML = html;
+            
+            // 클릭 이벤트 추가
+            container.querySelectorAll('.clickable-alert').forEach(el => {
+                el.addEventListener('click', (e) => {
+                    const row = e.target.closest('tr');
+                    const alertId = row.dataset.alertId;
+                    const detailRow = document.getElementById(`detail-row-${alertId}`);
+                    
+                    if (detailRow.style.display === 'none') {
+                        // 상세 정보 표시
+                        detailRow.style.display = 'table-row';
+                        this._loadAlertDetail(alertId, row.dataset.periodStart, row.dataset.periodEnd, analysisResult);
+                    } else {
+                        // 숨기기
+                        detailRow.style.display = 'none';
+                    }
+                });
+            });
+        }
+
+        static _calculateQueryPeriod(tranStart, tranEnd, monthsBack) {
+            if (!tranStart || !tranEnd) {
+                return { start: '', end: '', display: 'N/A' };
+            }
+            
+            try {
+                const startDate = new Date(tranStart);
+                startDate.setMonth(startDate.getMonth() - monthsBack);
+                
+                const startStr = startDate.toISOString().split('T')[0];
+                const endStr = tranEnd.split(' ')[0];
+                
+                return {
+                    start: startStr,
+                    end: endStr,
+                    display: `${startStr} ~ ${endStr} (-${monthsBack}개월)`
+                };
+            } catch (e) {
+                return { start: '', end: '', display: 'Error' };
+            }
+        }
+
+        static _loadAlertDetail(alertId, periodStart, periodEnd, analysisResult) {
+            const container = document.getElementById(`alert-detail-${alertId}`);
+            if (!container) return;
+            
+            // analysisResult에서 해당 ALERT의 상세 정보 찾기
+            if (analysisResult.alert_details && analysisResult.alert_details[alertId]) {
+                container.innerHTML = this._renderAlertDetail(analysisResult.alert_details[alertId]);
+            } else {
+                // 상세 정보가 없으면 서버에서 로드
+                container.innerHTML = '<div class="alert-loading">분석 중...</div>';
+                
+                // AJAX 요청으로 서버에서 상세 정보 로드
+                fetch(window.URLS.analyze_alert_orderbook, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': this._getCookie('csrftoken')
+                    },
+                    body: new URLSearchParams({
+                        alert_id: alertId,
+                        start_date: periodStart,
+                        end_date: periodEnd,
+                        cache_key: analysisResult.cache_key || ''
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        container.innerHTML = this._renderAlertDetail(data.detail);
+                    } else {
+                        container.innerHTML = '<div style="color: #ff6b6b;">분석 실패: ' + (data.message || '알 수 없는 오류') + '</div>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading alert detail:', error);
+                    container.innerHTML = '<div style="color: #ff6b6b;">데이터 로드 실패</div>';
+                });
+            }
+        }
+        
+        static _getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            return parts.length === 2 ? decodeURIComponent(parts.pop().split(';').shift()) : undefined;
+        }
+
+        static _renderAlertDetail(detail) {
+            if (!detail) return '<div>상세 정보가 없습니다.</div>';
+            
+            let html = '<div class="alert-detail-wrapper" style="padding: 10px; background: #0a0a0a; border-radius: 8px;">';
+            
+            // 요약 정보
+            html += '<div style="margin-bottom: 15px; padding: 10px; background: #1a1a1a; border-radius: 6px;">';
+            html += `<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">`;
+            
+            if (detail.summary) {
+                const s = detail.summary;
+                html += `<div><strong>매수:</strong> ${this._formatAmount(s.buy_amount || 0)} (${s.buy_count || 0}건)</div>`;
+                html += `<div><strong>매도:</strong> ${this._formatAmount(s.sell_amount || 0)} (${s.sell_count || 0}건)</div>`;
+                html += `<div><strong>원화입금:</strong> ${this._formatAmount(s.deposit_krw || 0)} (${s.deposit_krw_count || 0}건)</div>`;
+                html += `<div><strong>원화출금:</strong> ${this._formatAmount(s.withdraw_krw || 0)} (${s.withdraw_krw_count || 0}건)</div>`;
+                html += `<div><strong>가상자산입금:</strong> ${this._formatAmount(s.deposit_crypto || 0)} (${s.deposit_crypto_count || 0}건)</div>`;
+                html += `<div><strong>가상자산출금:</strong> ${this._formatAmount(s.withdraw_crypto || 0)} (${s.withdraw_crypto_count || 0}건)</div>`;
+            }
+            
+            html += '</div></div>';
+            
+            // 종목별 상세
+            if (detail.by_ticker) {
+                html += '<div style="margin-top: 10px;">';
+                html += '<h5 style="color: #bdbdbd; margin-bottom: 8px;">종목별 상세</h5>';
+                html += '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">';
+                
+                ['buy', 'sell', 'deposit', 'withdraw'].forEach(action => {
+                    if (detail.by_ticker[action] && detail.by_ticker[action].length > 0) {
+                        const actionLabel = {
+                            buy: '매수', sell: '매도', 
+                            deposit: '입금', withdraw: '출금'
+                        }[action];
+                        
+                        html += `<div style="padding: 8px; background: #151515; border-radius: 4px;">`;
+                        html += `<strong style="color: #4fc3f7;">${actionLabel}:</strong><br>`;
+                        
+                        detail.by_ticker[action].slice(0, 5).forEach(item => {
+                            html += `<div style="margin-left: 10px; font-size: 12px;">`;
+                            html += `${item.ticker}: ${this._formatAmount(item.amount)} (${item.count}건)`;
+                            html += `</div>`;
+                        });
+                        
+                        if (detail.by_ticker[action].length > 5) {
+                            html += `<div style="margin-left: 10px; font-size: 11px; color: #7a7a7a;">`;
+                            html += `... 외 ${detail.by_ticker[action].length - 5}개 종목`;
+                            html += `</div>`;
+                        }
+                        
+                        html += '</div>';
+                    }
+                });
+                
+                html += '</div></div>';
+            }
+            
+            html += '</div>';
+            return html;
         }
 
         static _renderPatternDetail(details) {
