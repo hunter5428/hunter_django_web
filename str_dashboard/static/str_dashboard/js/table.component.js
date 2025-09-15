@@ -1,3 +1,4 @@
+
 // str_dashboard/static/str_dashboard/js/table.component.js
 
 /**
@@ -1800,30 +1801,53 @@
         return div.innerHTML;
     }
     // formatAmount 헬퍼 함수 추가 (클래스 외부에)
+    // formatAmountWithUnit 헬퍼 함수 수정
     function formatAmountWithUnit(amount) {
         const absAmount = Math.abs(amount);
-        let mainText = '';
-        let unitText = '';
         
-        if (absAmount >= 100000000) { // 1억 이상
-            mainText = Math.floor(absAmount / 100000000).toLocaleString('ko-KR');
-            unitText = '억원';
-            const remainder = Math.floor((absAmount % 100000000) / 10000000);
-            if (remainder > 0) {
-                unitText += ` <span style="font-size: 0.8em; color: #999;">(+${remainder}천만)</span>`;
-            }
-        } else if (absAmount >= 10000000) { // 1천만 이상
-            mainText = Math.floor(absAmount / 10000000).toLocaleString('ko-KR');
-            unitText = '천만원';
-        } else if (absAmount >= 1000000) { // 100만 이상
-            mainText = Math.floor(absAmount / 1000000).toLocaleString('ko-KR');
-            unitText = '백만원';
-        } else {
-            mainText = absAmount.toLocaleString('ko-KR');
-            unitText = '원';
+        if (absAmount === 0) {
+            return '0원';
         }
         
-        return `${mainText}${unitText}`;
+        // 한국 숫자 단위 배열
+        const units = [
+            { value: 1000000000000, name: '조' },
+            { value: 100000000, name: '억' },
+            { value: 10000, name: '만' }
+        ];
+        
+        let result = [];
+        let remaining = absAmount;
+        
+        // 각 단위별로 처리
+        for (const unit of units) {
+            if (remaining >= unit.value) {
+                const unitAmount = Math.floor(remaining / unit.value);
+                result.push(`${unitAmount.toLocaleString('ko-KR')}${unit.name}`);
+                remaining = remaining % unit.value;
+            }
+        }
+        
+        // 남은 원 단위 처리 (1만원 미만)
+        if (remaining > 0 && result.length > 0) {
+            // 억 단위 이상일 때만 남은 금액 표시
+            if (absAmount >= 100000000) {
+                result.push(`${Math.floor(remaining).toLocaleString('ko-KR')}원`);
+            }
+        } else if (result.length === 0) {
+            // 1만원 미만은 그냥 원으로 표시
+            result.push(`${absAmount.toLocaleString('ko-KR')}원`);
+        }
+        
+        // 최종 조합
+        const mainText = result.join(' ');
+        
+        // 괄호 안에 전체 금액 표시 (1억원 이상일 때만)
+        if (absAmount >= 100000000) {
+            return `${mainText} <span style="font-size: 0.85em; color: #999;">(${absAmount.toLocaleString('ko-KR')}원)</span>`;
+        }
+        
+        return mainText;
     }
 
     // DOM 준비 후 섹션 토글 초기화 (중복 방지)

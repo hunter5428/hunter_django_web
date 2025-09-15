@@ -148,18 +148,21 @@
     transform: translateX(2px);
 }
 
+/* 섹션 토글 (접기/펼치기) 부분 수정 */
 .section h3::after {
-    content: '▼';
+    content: '';
     position: absolute;
     right: 12px;
     top: 50%;
     transform: translateY(-50%);
-    font-size: 12px;
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 8px solid #bdbdbd;
     transition: transform 0.3s ease;
-    color: #bdbdbd;
 }
 
-/* 접힌 상태 */
 .section.collapsed h3::after {
     transform: translateY(-50%) rotate(-90deg);
 }
