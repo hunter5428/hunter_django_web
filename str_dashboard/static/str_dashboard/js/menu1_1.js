@@ -200,14 +200,6 @@
                         if (tranPeriod.start && tranPeriod.end) {
                             console.log(`Fetching IP access history for MID: ${memId}`);
                             await this.fetchIPAccessHistory(memId, tranPeriod);
-                        }
-                    }
-
-                    if (memId) {
-                        const tranPeriod = this.extractTransactionPeriod();
-                        if (tranPeriod.start && tranPeriod.end) {
-                            console.log(`Fetching IP access history for MID: ${memId}`);
-                            await this.fetchIPAccessHistory(memId, tranPeriod);
                             
                             // Redshift Orderbook 조회 추가
                             if (window.dualDBManager && window.dualDBManager.isRedshiftConnected()) {
@@ -216,8 +208,6 @@
                             }
                         }
                     }
-
-
 
                 } else {
                     console.error('Customer info query failed:', customerData.message);
@@ -573,7 +563,6 @@
             window.renderRuleDescSection(cols, rows, canonicalIds, repRuleId);
         }
 
-        // menu1_1.js의 AlertSearchManager 클래스에 추가할 메서드들
         // fetchRedshiftOrderbook 메서드 - 분석까지 자동 수행
         async fetchRedshiftOrderbook(memId, tranPeriod) {
             // Redshift 연결 확인
@@ -678,56 +667,75 @@
 
         // Orderbook 분석 결과를 화면에 렌더링
         renderOrderbookAnalysis(analysisResult) {
-            // 섹션 찾기 또는 생성
-            let section = document.getElementById('section_orderbook_analysis');
-            if (!section) {
-                // 섹션이 없으면 생성
-                section = document.createElement('div');
-                section.id = 'section_orderbook_analysis';
-                section.className = 'section';
-                section.innerHTML = `
+            // 패턴 분석 섹션 찾기 또는 생성
+            let patternSection = document.getElementById('section_orderbook_patterns');
+            if (!patternSection) {
+                patternSection = document.createElement('div');
+                patternSection.id = 'section_orderbook_patterns';
+                patternSection.className = 'section';
+                patternSection.innerHTML = `
                     <h3>거래원장(Orderbook) 분석</h3>
-                    <div class="table-wrap" id="result_orderbook_analysis"></div>
+                    <div class="table-wrap" id="result_orderbook_patterns"></div>
                 `;
                 
                 // IP 접속 이력 섹션 다음에 추가
                 const ipSection = document.getElementById('section_ip_access_history');
                 if (ipSection && ipSection.parentNode) {
-                    ipSection.parentNode.insertBefore(section, ipSection.nextSibling);
+                    ipSection.parentNode.insertBefore(patternSection, ipSection.nextSibling);
                 } else {
-                    // 적절한 위치에 추가
-                    document.querySelector('.app-main').appendChild(section);
+                    document.querySelector('.app-main').appendChild(patternSection);
+                }
+            }
+            
+            // 구간별 상세 섹션 찾기 또는 생성 
+            let segmentSection = document.getElementById('section_orderbook_segments');
+            if (!segmentSection) {
+                segmentSection = document.createElement('div');
+                segmentSection.id = 'section_orderbook_segments';
+                segmentSection.className = 'section collapsed'; // 기본 접힘
+                segmentSection.innerHTML = `
+                    <h3>구간별 상세 내역</h3>
+                    <div class="table-wrap" id="result_orderbook_segments"></div>
+                `;
+                
+                // 패턴 섹션 다음에 추가
+                if (patternSection && patternSection.parentNode) {
+                    patternSection.parentNode.insertBefore(segmentSection, patternSection.nextSibling);
                 }
             }
             
             // 섹션 표시
-            section.style.display = 'block';
+            patternSection.style.display = 'block';
+            segmentSection.style.display = 'block';
             
-            // 결과 컨테이너
-            const container = document.getElementById('result_orderbook_analysis');
-            if (!container) return;
+            // 패턴 분석 컨테이너
+            const patternContainer = document.getElementById('result_orderbook_patterns');
+            // 구간 상세 컨테이너
+            const segmentContainer = document.getElementById('result_orderbook_segments');
             
-            // HTML 구성
-            let html = '';
+            if (!patternContainer || !segmentContainer) return;
+            
+            // 패턴 분석 HTML
+            let patternHtml = '';
             
             // 1. 패턴 분석 요약 (클릭 가능한 카드 형태)
             if (analysisResult.patterns) {
                 const patterns = analysisResult.patterns;
-                html += `
+                patternHtml += `
                 <div class="orderbook-patterns-summary card" style="margin-bottom: 15px;">
                     <h4 style="margin: 0 0 10px 0; font-size: 14px;">거래 패턴 분석</h4>
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">`;
                 
                 // 매수
                 if (patterns.total_buy_amount >= 0) {
-                    html += `
+                    patternHtml += `
                         <div class="pattern-stat clickable" data-action="buy">
                             <span style="color: #9a9a9a; font-size: 12px;">총 매수</span>
                             <div style="font-size: 16px; font-weight: 700;">
-                                ${Number(patterns.total_buy_amount).toLocaleString('ko-KR')}원
+                                ${patterns.total_buy_amount.toLocaleString('ko-KR')}원
                             </div>
                             <div style="font-size: 13px; color: #9a9a9a;">
-                                ${Number(patterns.total_buy_count || 0).toLocaleString('ko-KR')}건
+                                ${patterns.total_buy_count.toLocaleString('ko-KR')}건
                             </div>
                             <div class="pattern-detail" id="detail-buy" style="display: none;"></div>
                         </div>`;
@@ -735,14 +743,14 @@
                 
                 // 매도
                 if (patterns.total_sell_amount >= 0) {
-                    html += `
+                    patternHtml += `
                         <div class="pattern-stat clickable" data-action="sell">
                             <span style="color: #9a9a9a; font-size: 12px;">총 매도</span>
                             <div style="font-size: 16px; font-weight: 700;">
-                                ${Number(patterns.total_sell_amount).toLocaleString('ko-KR')}원
+                                ${patterns.total_sell_amount.toLocaleString('ko-KR')}원
                             </div>
                             <div style="font-size: 13px; color: #9a9a9a;">
-                                ${Number(patterns.total_sell_count || 0).toLocaleString('ko-KR')}건
+                                ${patterns.total_sell_count.toLocaleString('ko-KR')}건
                             </div>
                             <div class="pattern-detail" id="detail-sell" style="display: none;"></div>
                         </div>`;
@@ -750,14 +758,14 @@
                 
                 // 원화 입금
                 if (patterns.total_deposit_krw >= 0) {
-                    html += `
+                    patternHtml += `
                         <div class="pattern-stat clickable" data-action="deposit_krw">
                             <span style="color: #9a9a9a; font-size: 12px;">원화 입금</span>
                             <div style="font-size: 16px; font-weight: 700;">
-                                ${Number(patterns.total_deposit_krw).toLocaleString('ko-KR')}원
+                                ${patterns.total_deposit_krw.toLocaleString('ko-KR')}원
                             </div>
                             <div style="font-size: 13px; color: #9a9a9a;">
-                                ${Number(patterns.total_deposit_krw_count || 0).toLocaleString('ko-KR')}건
+                                ${patterns.total_deposit_krw_count.toLocaleString('ko-KR')}건
                             </div>
                             <div class="pattern-detail" id="detail-deposit_krw" style="display: none;"></div>
                         </div>`;
@@ -765,14 +773,14 @@
                 
                 // 원화 출금
                 if (patterns.total_withdraw_krw >= 0) {
-                    html += `
+                    patternHtml += `
                         <div class="pattern-stat clickable" data-action="withdraw_krw">
                             <span style="color: #9a9a9a; font-size: 12px;">원화 출금</span>
                             <div style="font-size: 16px; font-weight: 700;">
-                                ${Number(patterns.total_withdraw_krw).toLocaleString('ko-KR')}원
+                                ${patterns.total_withdraw_krw.toLocaleString('ko-KR')}원
                             </div>
                             <div style="font-size: 13px; color: #9a9a9a;">
-                                ${Number(patterns.total_withdraw_krw_count || 0).toLocaleString('ko-KR')}건
+                                ${patterns.total_withdraw_krw_count.toLocaleString('ko-KR')}건
                             </div>
                             <div class="pattern-detail" id="detail-withdraw_krw" style="display: none;"></div>
                         </div>`;
@@ -780,14 +788,14 @@
                 
                 // 가상자산 입금
                 if (patterns.total_deposit_crypto >= 0) {
-                    html += `
+                    patternHtml += `
                         <div class="pattern-stat clickable" data-action="deposit_crypto">
                             <span style="color: #9a9a9a; font-size: 12px;">가상자산 입금</span>
                             <div style="font-size: 16px; font-weight: 700;">
-                                ${Number(patterns.total_deposit_crypto).toLocaleString('ko-KR')}원
+                                ${patterns.total_deposit_crypto.toLocaleString('ko-KR')}원
                             </div>
                             <div style="font-size: 13px; color: #9a9a9a;">
-                                ${Number(patterns.total_deposit_crypto_count || 0).toLocaleString('ko-KR')}건
+                                ${patterns.total_deposit_crypto_count.toLocaleString('ko-KR')}건
                             </div>
                             <div class="pattern-detail" id="detail-deposit_crypto" style="display: none;"></div>
                         </div>`;
@@ -795,20 +803,20 @@
                 
                 // 가상자산 출금
                 if (patterns.total_withdraw_crypto >= 0) {
-                    html += `
+                    patternHtml += `
                         <div class="pattern-stat clickable" data-action="withdraw_crypto">
                             <span style="color: #9a9a9a; font-size: 12px;">가상자산 출금</span>
                             <div style="font-size: 16px; font-weight: 700;">
-                                ${Number(patterns.total_withdraw_crypto).toLocaleString('ko-KR')}원
+                                ${patterns.total_withdraw_crypto.toLocaleString('ko-KR')}원
                             </div>
                             <div style="font-size: 13px; color: #9a9a9a;">
-                                ${Number(patterns.total_withdraw_crypto_count || 0).toLocaleString('ko-KR')}건
+                                ${patterns.total_withdraw_crypto_count.toLocaleString('ko-KR')}건
                             </div>
                             <div class="pattern-detail" id="detail-withdraw_crypto" style="display: none;"></div>
                         </div>`;
                 }
                 
-                html += `
+                patternHtml += `
                     </div>
                 </div>`;
                 
@@ -816,11 +824,79 @@
                 window.orderbookPatternDetails = patterns;
             }
             
-            // 2. 구간별 상세 테이블
+            // 2. 일자별 매수/매도, 입출금 현황 추가
+            if (analysisResult.daily_summary && analysisResult.daily_summary.length > 0) {
+                patternHtml += `
+                <div class="daily-trading-summary card" style="margin-bottom: 15px;">
+                    <h4 style="margin: 0 0 10px 0; font-size: 14px;">일자별 매수/매도, 입출금 현황</h4>
+                    <table class="table daily-summary-table">
+                        <thead>
+                            <tr>
+                                <th>날짜</th>
+                                <th>매수</th>
+                                <th>매도</th>
+                                <th>원화입금</th>
+                                <th>원화출금</th>
+                                <th>가상자산<br>내부입금</th>
+                                <th>가상자산<br>내부출금</th>
+                                <th>가상자산<br>외부입금</th>
+                                <th>가상자산<br>외부출금</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+                
+                analysisResult.daily_summary.forEach((day, idx) => {
+                    patternHtml += `
+                        <tr>
+                            <td>${day['날짜']}</td>
+                            <td class="clickable-amount" data-day="${idx}" data-type="매수">
+                                ${day['매수'].total_amount.toLocaleString('ko-KR')}
+                            </td>
+                            <td class="clickable-amount" data-day="${idx}" data-type="매도">
+                                ${day['매도'].total_amount.toLocaleString('ko-KR')}
+                            </td>
+                            <td class="clickable-amount" data-day="${idx}" data-type="원화입금">
+                                ${day['원화입금'].total_amount.toLocaleString('ko-KR')}
+                            </td>
+                            <td class="clickable-amount" data-day="${idx}" data-type="원화출금">
+                                ${day['원화출금'].total_amount.toLocaleString('ko-KR')}
+                            </td>
+                            <td class="clickable-amount" data-day="${idx}" data-type="가상자산내부입금">
+                                ${day['가상자산내부입금'].total_amount.toLocaleString('ko-KR')}
+                            </td>
+                            <td class="clickable-amount" data-day="${idx}" data-type="가상자산내부출금">
+                                ${day['가상자산내부출금'].total_amount.toLocaleString('ko-KR')}
+                            </td>
+                            <td class="clickable-amount" data-day="${idx}" data-type="가상자산외부입금">
+                                ${day['가상자산외부입금'].total_amount.toLocaleString('ko-KR')}
+                            </td>
+                            <td class="clickable-amount" data-day="${idx}" data-type="가상자산외부출금">
+                                ${day['가상자산외부출금'].total_amount.toLocaleString('ko-KR')}
+                            </td>
+                        </tr>
+                        <tr class="daily-detail-row" id="daily-detail-${idx}" style="display: none;">
+                            <td colspan="9" style="padding: 10px 20px; background: #0a0a0a;">
+                                <div class="daily-details"></div>
+                            </td>
+                        </tr>`;
+                });
+                
+                patternHtml += `
+                        </tbody>
+                    </table>
+                </div>`;
+                
+                // 일자별 데이터 저장
+                window.orderbookDailySummary = analysisResult.daily_summary;
+            }
+            
+            // 구간별 상세 HTML
+            let segmentHtml = '';
+            
+            // 3. 구간별 상세 테이블
             if (analysisResult.summary_data && analysisResult.summary_data.length > 0) {
-                html += `
+                segmentHtml += `
                 <div class="orderbook-segments-table">
-                    <h4 style="margin: 0 0 10px 0; font-size: 14px;">구간별 상세 내역</h4>
                     <table class="table orderbook-summary-table">
                         <thead>
                             <tr>
@@ -844,7 +920,7 @@
                     const countFormatted = Number(segment['건수'] || 0).toLocaleString('ko-KR');
                     const transCat = segment['trans_cat'] || '-';
                     
-                    html += `
+                    segmentHtml += `
                             <tr class="segment-row" data-segment="${idx}">
                                 <td>${segment['구간']}</td>
                                 <td>${transCat}</td>
@@ -860,7 +936,7 @@
                     
                     // 상세내역이 있으면 숨겨진 행으로 추가
                     if (segment['상세내역']) {
-                        html += `
+                        segmentHtml += `
                             <tr class="segment-detail-row" id="segment-detail-${idx}" style="display: none;">
                                 <td colspan="10" style="padding: 10px 20px; background: #0a0a0a;">
                                     <pre style="margin: 0; font-size: 11px; color: #bdbdbd;">${segment['상세내역']}</pre>
@@ -869,14 +945,15 @@
                     }
                 });
                 
-                html += `
+                segmentHtml += `
                         </tbody>
                     </table>
                 </div>`;
             }
             
             // HTML 삽입
-            container.innerHTML = html;
+            patternContainer.innerHTML = patternHtml;
+            segmentContainer.innerHTML = segmentHtml;
             
             // 이벤트 리스너 추가
             this.attachOrderbookEventListeners();
@@ -939,6 +1016,45 @@
                     .orderbook-summary-table .segment-detail-row {
                         border-top: none;
                     }
+                    
+                    .daily-summary-table {
+                        font-size: 12px;
+                        width: 100%;
+                    }
+                    
+                    .daily-summary-table th {
+                        white-space: nowrap;
+                        font-size: 11px;
+                        text-align: center;
+                    }
+                    
+                    .daily-summary-table td {
+                        text-align: right;
+                        padding: 8px;
+                    }
+                    
+                    .daily-summary-table td:first-child {
+                        text-align: center;
+                        font-weight: 600;
+                    }
+                    
+                    .daily-summary-table .clickable-amount {
+                        cursor: pointer;
+                        transition: background 0.2s ease;
+                    }
+                    
+                    .daily-summary-table .clickable-amount:hover {
+                        background: #1a1a1a;
+                    }
+                    
+                    .daily-summary-table .clickable-amount.active {
+                        background: #2a2a2a;
+                        font-weight: 600;
+                    }
+                    
+                    .daily-detail-row td {
+                        text-align: left !important;
+                    }
                 `;
                 document.head.appendChild(style);
             }
@@ -995,23 +1111,104 @@
                 });
             });
             
-            // 종목별 상세 포맷팅 함수
+            // 일자별 금액 클릭시 상세내역 토글
+            document.querySelectorAll('.clickable-amount').forEach(cell => {
+                cell.addEventListener('click', function() {
+                    const dayIdx = this.dataset.day;
+                    const type = this.dataset.type;
+                    const detailRow = document.getElementById(`daily-detail-${dayIdx}`);
+                    
+                    if (!detailRow) return;
+                    
+                    const detailContainer = detailRow.querySelector('.daily-details');
+                    const dailySummary = window.orderbookDailySummary;
+                    
+                    if (!dailySummary || !dailySummary[dayIdx]) return;
+                    
+                    const dayData = dailySummary[dayIdx][type];
+                    
+                    if (detailRow.style.display === 'none' || detailRow.dataset.currentType !== type) {
+                        // 상세 내역 생성
+                        let detailHtml = `<strong>${type} 상세내역</strong><br><br>`;
+                        
+                        if (dayData && dayData.details) {
+                            if (type === '매수' || type === '매도') {
+                                // 금액 기준 정렬된 상태로 표시
+                                detailHtml += '<div style="line-height: 1.6;">';
+                                dayData.details.forEach(([ticker, data]) => {
+                                    const amount = parseInt(data.amount_krw || 0);
+                                    const quantity = parseFloat(data.quantity || 0);
+                                    const count = parseInt(data.count || 0);
+                                    
+                                    detailHtml += `${ticker}: 금액 ${amount.toLocaleString('ko-KR')}원, `;
+                                    detailHtml += `수량 ${quantity.toLocaleString('ko-KR', {maximumFractionDigits: 4})}개, `;
+                                    detailHtml += `횟수 ${count}건<br>`;
+                                });
+                                detailHtml += '</div>';
+                            } else if (type === '원화입금' || type === '원화출금') {
+                                detailHtml += '<div style="line-height: 1.6;">';
+                                dayData.details.forEach(([ticker, data]) => {
+                                    const amount = parseInt(data.amount_krw || 0);
+                                    const count = parseInt(data.count || 0);
+                                    
+                                    detailHtml += `KRW: 금액 ${amount.toLocaleString('ko-KR')}원, `;
+                                    detailHtml += `횟수 ${count}건<br>`;
+                                });
+                                detailHtml += '</div>';
+                            } else {
+                                // 가상자산 입출금
+                                detailHtml += '<div style="line-height: 1.6;">';
+                                dayData.details.forEach(item => {
+                                    const datetime = item.datetime || '';
+                                    const ticker = item.ticker || 'Unknown';
+                                    const amount = parseInt(item.amount_krw || 0);
+                                    const quantity = parseFloat(item.quantity || 0);
+                                    
+                                    detailHtml += `${datetime} - ${ticker}: `;
+                                    detailHtml += `금액 ${amount.toLocaleString('ko-KR')}원, `;
+                                    detailHtml += `수량 ${quantity.toLocaleString('ko-KR', {maximumFractionDigits: 4})}개<br>`;
+                                });
+                                detailHtml += '</div>';
+                            }
+                        } else {
+                            detailHtml += '<div style="color: #666;">상세 내역이 없습니다.</div>';
+                        }
+                        
+                        detailContainer.innerHTML = detailHtml;
+                        detailRow.style.display = 'table-row';
+                        detailRow.dataset.currentType = type;
+                        
+                        // 현재 셀 강조
+                        document.querySelectorAll(`.clickable-amount[data-day="${dayIdx}"]`).forEach(c => {
+                            c.classList.remove('active');
+                        });
+                        this.classList.add('active');
+                    } else {
+                        // 같은 타입 다시 클릭시 닫기
+                        detailRow.style.display = 'none';
+                        this.classList.remove('active');
+                    }
+                });
+            });
+            
+            // 종목별 상세 포맷팅 함수 (금액 기준 정렬)
             function formatActionDetails(details) {
                 if (!details || details.length === 0) {
                     return '<div style="color: #666;">상세 내역이 없습니다.</div>';
                 }
                 
+                // 이미 정렬된 상태로 전달되므로 그대로 표시
                 let html = '<div style="line-height: 1.5;">';
                 details.forEach(([ticker, data]) => {
-                    const quantity = Number(data.quantity || 0).toLocaleString('ko-KR', {maximumFractionDigits: 4});
-                    const amount = Number(data.amount_krw || 0).toLocaleString('ko-KR');
-                    const count = Number(data.count || 0).toLocaleString('ko-KR');
+                    const amount = parseInt(data.amount_krw || 0);
+                    const quantity = parseFloat(data.quantity || 0);
+                    const count = parseInt(data.count || 0);
                     
                     html += `<div style="margin-bottom: 5px;">
                         <strong>${ticker}</strong>: 
-                        수량 ${quantity}개, 
-                        금액 ${amount}원, 
-                        횟수 ${count}건
+                        금액 ${amount.toLocaleString('ko-KR')}원, 
+                        수량 ${quantity.toLocaleString('ko-KR', {maximumFractionDigits: 4})}개, 
+                        횟수 ${count.toLocaleString('ko-KR')}건
                     </div>`;
                 });
                 html += '</div>';
@@ -1026,10 +1223,6 @@
             div.textContent = text;
             return div.innerHTML;
         }
-        
-
-
-
 
         showOrderbookStatus(message, type = 'info') {
             // 상태 표시 영역이 없으면 생성

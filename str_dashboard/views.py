@@ -1079,7 +1079,6 @@ def get_orderbook_dataframe(cache_key: str) -> Optional[pd.DataFrame]:
     return None
 
 
-
 @login_required
 @require_POST
 def analyze_cached_orderbook(request):
@@ -1116,6 +1115,9 @@ def analyze_cached_orderbook(request):
         # 패턴 분석
         patterns = analyzer.get_pattern_analysis()
         
+        # 일자별 요약 가져오기
+        daily_summary = analyzer.get_daily_summary()
+        
         # HTML 테이블 생성
         html_table = analyzer.export_to_html_table()
         
@@ -1125,6 +1127,7 @@ def analyze_cached_orderbook(request):
                 'summary_df': summary_df,
                 'text_summary': text_summary,
                 'patterns': patterns,
+                'daily_summary': daily_summary,
                 'html_table': html_table,
                 'analyzed_at': datetime.now()
             }
@@ -1133,12 +1136,14 @@ def analyze_cached_orderbook(request):
         
         # DataFrame을 JSON으로 변환
         summary_json = summary_df.to_dict('records') if not summary_df.empty else []
+        daily_json = daily_summary.to_dict('records') if not daily_summary.empty else []
         
         return JsonResponse({
             'success': True,
             'cache_key': cache_key,
             'segments_count': len(summary_df),
             'summary_data': summary_json,
+            'daily_summary': daily_json,
             'text_summary': text_summary,
             'patterns': patterns,
             'html_table': html_table
