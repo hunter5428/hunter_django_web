@@ -12,7 +12,7 @@ import pandas as pd
 from typing import Optional, Dict, Any, List
 from pathlib import Path
 from .orderbook_analyzer import OrderbookAnalyzer
-from .toml_exporter import toml_collector
+from .toml import toml_collector, toml_exporter
 import tempfile
 from django.http import FileResponse
 
@@ -1375,59 +1375,6 @@ def save_to_session(request):
 
 
 @login_required
-@require_POST
-def prepare_toml_data(request):
-    """화면에 렌더링된 데이터를 수집하여 TOML 형식으로 준비"""
-    try:
-        # 세션에서 모든 관련 데이터 수집
-        session_data = {
-            'current_alert_data': SessionManager.get_data(request, 'current_alert_data', {}),
-            'current_alert_id': SessionManager.get_data(request, 'current_alert_id', ''),
-            'current_customer_data': SessionManager.get_data(request, 'current_customer_data', {}),
-            'current_corp_related_data': SessionManager.get_data(request, 'current_corp_related_data', {}),
-            'current_person_related_data': SessionManager.get_data(request, 'current_person_related_data', {}),
-            'current_rule_history_data': SessionManager.get_data(request, 'current_rule_history_data', {}),
-            'duplicate_persons_data': SessionManager.get_data(request, 'duplicate_persons_data', {}),
-            'ip_history_data': SessionManager.get_data(request, 'ip_history_data', {}),
-            'current_orderbook_analysis': SessionManager.get_data(request, 'current_orderbook_analysis', {}),
-            'current_stds_dtm_summary': SessionManager.get_data(request, 'current_stds_dtm_summary', {})
-        }
-        
-        # 디버깅 로그
-        logger.info("=== Session Data Keys ===")
-        for key, value in session_data.items():
-            if value:
-                logger.info(f"{key}: {type(value)}, size: {len(str(value))}")
-                if isinstance(value, dict):
-                    logger.info(f"  keys: {list(value.keys())}")
-        
-        # TOML 데이터 수집
-        collected_data = toml_collector.collect_all_data(session_data)
-        
-        # 임시 파일에 저장
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False, encoding='utf-8') as tmp:
-            import toml
-            toml.dump(collected_data, tmp)
-            tmp_path = tmp.name
-        
-        SessionManager.save_data(request, 'toml_temp_path', tmp_path)
-        
-        return JsonResponse({
-            'success': True,
-            'message': 'TOML 데이터 준비 완료',
-            'data_count': len(collected_data),
-            'sections': list(collected_data.keys())
-        })
-        
-    except Exception as e:
-        logger.exception(f"Error preparing TOML data: {e}")
-        return JsonResponse({
-            'success': False,
-            'message': f'TOML 데이터 준비 실패: {str(e)}'
-        })
-
-
-@login_required
 def download_toml(request):
     """준비된 TOML 파일 다운로드"""
     try:
@@ -1467,9 +1414,6 @@ def download_toml(request):
         })
 
 
-# views.py 수정 부분
-from .toml import toml_exporter
-
 @login_required
 @require_POST
 def prepare_toml_data(request):
@@ -1478,24 +1422,49 @@ def prepare_toml_data(request):
         # 세션에서 모든 관련 데이터 수집
         session_data = {
             'current_alert_data': SessionManager.get_data(request, 'current_alert_data', {}),
-            # ... 기타 데이터
+            'current_alert_id': SessionManager.get_data(request, 'current_alert_id', ''),
+            'current_customer_data': SessionManager.get_data(request, 'current_customer_data', {}),
+            'current_corp_related_data': SessionManager.get_data(request, 'current_corp_related_data', {}),
+            'current_person_related_data': SessionManager.get_data(request, 'current_person_related_data', {}),
+            'current_rule_history_data': SessionManager.get_data(request, 'current_rule_history_data', {}),
+            'duplicate_persons_data': SessionManager.get_data(request, 'duplicate_persons_data', {}),
+            'ip_history_data': SessionManager.get_data(request, 'ip_history_data', {}),
+            'current_orderbook_analysis': SessionManager.get_data(request, 'current_orderbook_analysis', {}),
+            'current_stds_dtm_summary': SessionManager.get_data(request, 'current_stds_dtm_summary', {})
         }
+        
+        # 디버깅 로그
+        logger.info("=== Session Data Keys ===")
+        for key, value in session_data.items():
+            if value:
+                logger.info(f"{key}: {type(value)}, size: {len(str(value))}")
+                if isinstance(value, dict):
+                    logger.info(f"  keys: {list(value.keys())}")
         
         # TOML 파일명 생성
         alert_id = SessionManager.get_data(request, 'current_alert_id', 'unknown')
         filename = toml_exporter.generate_filename(alert_id)
         
-        # 임시 파일 경로
-        tmp_path = f'/tmp/{filename}'
+        # 임시 파일 경로 생성
+        tmp_dir = tempfile.gettempdir()
+        tmp_path = Path(tmp_dir) / filename
         
-        # TOML 내보내기
-        success = toml_exporter.export_to_toml(session_data, tmp_path)
+        # TOML 내보내기 (toml_exporter 사용)
+        success = toml_exporter.export_to_toml(session_data, str(tmp_path))
         
         if success:
-            SessionManager.save_data(request, 'toml_temp_path', tmp_path)
+            # 세션에 임시 파일 경로 저장
+            SessionManager.save_data(request, 'toml_temp_path', str(tmp_path))
+            
+            # 수집된 데이터 정보 가져오기
+            collected_data = toml_collector.collect_all_data(session_data)
+            
             return JsonResponse({
                 'success': True,
-                'message': 'TOML 데이터 준비 완료'
+                'message': 'TOML 데이터 준비 완료',
+                'data_count': len(collected_data),
+                'sections': list(collected_data.keys()),
+                'filename': filename
             })
         else:
             return JsonResponse({
@@ -1509,3 +1478,10 @@ def prepare_toml_data(request):
             'success': False,
             'message': f'TOML 데이터 준비 실패: {str(e)}'
         })
+    
+
+
+
+
+
+
