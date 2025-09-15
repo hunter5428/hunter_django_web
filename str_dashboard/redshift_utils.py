@@ -150,30 +150,78 @@ class RedshiftConnection:
         try:
             conn = self.connect()
             cursor = conn.cursor()
+            
+            # 쿼리 실행 전 로깅
+            logger.debug(f"Executing Redshift query with {len(params)} parameters")
+            
+            # 쿼리 실행
             cursor.execute(sql, params)
             
             # SELECT 쿼리 결과 반환
             if cursor.description:
                 cols = [desc[0] for desc in cursor.description]
-                rows = cursor.fetchall()
+                
+                # 대용량 데이터 처리를 위한 배치 페치
+                rows = []
+                batch_size = 10000  # 배치 크기 설정
+                
+                while True:
+                    batch = cursor.fetchmany(batch_size)
+                    if not batch:
+                        break
+                    rows.extend(batch)
+                    
+                    # 메모리 사용량 체크 (옵션)
+                    if len(rows) > 1000000:  # 100만 행 이상이면 경고
+                        logger.warning(f"Large result set: {len(rows)} rows fetched")
+                
+                logger.debug(f"Query returned {len(rows)} rows")
                 return cols, rows
             else:
                 return [], []
                 
-        except psycopg2.Error as e:
-            logger.exception(f"Redshift query execution failed: {e}")
-            raise RedshiftQueryError(f"쿼리 실행 실패: {e}")
+        except psycopg2.OperationalError as e:
+            # 연결 관련 에러
+            logger.error(f"Redshift connection error during query: {e}")
+            raise RedshiftQueryError(f"연결 오류: {self._parse_redshift_error(str(e))}")
+            
+        except psycopg2.ProgrammingError as e:
+            # SQL 구문 에러
+            logger.error(f"Redshift SQL error: {e}")
+            raise RedshiftQueryError(f"SQL 오류: {str(e)}")
+            
+        except psycopg2.DataError as e:
+            # 데이터 타입 에러
+            logger.error(f"Redshift data error: {e}")
+            raise RedshiftQueryError(f"데이터 오류: {str(e)}")
+            
+        except psycopg2.IntegrityError as e:
+            # 무결성 제약 위반 (읽기 전용이므로 발생하지 않아야 함)
+            logger.error(f"Redshift integrity error: {e}")
+            raise RedshiftQueryError(f"무결성 오류: {str(e)}")
+            
+        except Exception as e:
+            # 기타 예상치 못한 에러
+            logger.exception(f"Unexpected error in Redshift query execution: {e}")
+            raise RedshiftQueryError(f"쿼리 실행 실패: {str(e)}")
+            
         finally:
+            # 리소스 정리
             if cursor:
                 try:
                     cursor.close()
-                except Exception:
-                    pass
+                    logger.debug("Cursor closed")
+                except Exception as e:
+                    logger.warning(f"Error closing cursor: {e}")
+            
             if conn:
                 try:
+                    # 읽기 전용 + autocommit이므로 rollback 불필요
                     conn.close()
-                except Exception:
-                    pass
+                    logger.debug("Connection closed")
+                except Exception as e:
+                    logger.warning(f"Error closing connection: {e}")
+
     
     def execute_query_dict(self, sql: str, params: Optional[List] = None) -> List[Dict[str, Any]]:
         """
