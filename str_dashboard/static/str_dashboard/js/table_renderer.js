@@ -1,5 +1,5 @@
 // str_dashboard/static/str_dashboard/js/table_renderer.js
-// 테이블 렌더링 전용 모듈 - table.component.js를 대체
+// 테이블 렌더링 전용 모듈 - 구간별 분석 제거, 금액 표시 개선
 
 (function(window) {
     'use strict';
@@ -589,22 +589,20 @@
             }
         }
 
-        // Orderbook 분석
+        // Orderbook 분석 - 구간별 분석 제거
         static renderOrderbookAnalysis(analysisResult) {
-            // 동적으로 섹션 생성
+            // 동적으로 섹션 생성 (구간별 제외)
             this._createOrderbookSections();
             
             // 각 섹션 렌더링
             this._renderOrderbookPatterns(analysisResult);
             this._renderOrderbookDaily(analysisResult);
-            this._renderOrderbookSegments(analysisResult);
         }
 
         static _createOrderbookSections() {
             const sections = [
                 { id: 'section_orderbook_patterns', title: '거래원장(Orderbook) 개요', collapsed: false },
-                { id: 'section_orderbook_daily', title: '일자별 매수/매도, 입출금 현황', collapsed: true },
-                { id: 'section_orderbook_segments', title: '구간별 상세 내역', collapsed: true }
+                { id: 'section_orderbook_daily', title: '일자별 매수/매도, 입출금 현황', collapsed: true }
             ];
             
             const ipSection = document.getElementById('section_ip_access_history');
@@ -637,21 +635,30 @@
             
             // 패턴 카드 HTML 생성
             const items = [
-                { key: 'buy', label: '총 매수', amount: data.patterns.total_buy_amount, count: data.patterns.total_buy_count },
-                { key: 'sell', label: '총 매도', amount: data.patterns.total_sell_amount, count: data.patterns.total_sell_count },
-                { key: 'deposit_krw', label: '원화 입금', amount: data.patterns.total_deposit_krw, count: data.patterns.total_deposit_krw_count },
-                { key: 'withdraw_krw', label: '원화 출금', amount: data.patterns.total_withdraw_krw, count: data.patterns.total_withdraw_krw_count },
-                { key: 'deposit_crypto', label: '가상자산 입금', amount: data.patterns.total_deposit_crypto, count: data.patterns.total_deposit_crypto_count },
-                { key: 'withdraw_crypto', label: '가상자산 출금', amount: data.patterns.total_withdraw_crypto, count: data.patterns.total_withdraw_crypto_count }
+                { key: 'buy', label: '총 매수', amount: data.patterns.total_buy_amount, count: data.patterns.total_buy_count, details: data.patterns.buy_details },
+                { key: 'sell', label: '총 매도', amount: data.patterns.total_sell_amount, count: data.patterns.total_sell_count, details: data.patterns.sell_details },
+                { key: 'deposit_krw', label: '원화 입금', amount: data.patterns.total_deposit_krw, count: data.patterns.total_deposit_krw_count, details: data.patterns.deposit_krw_details },
+                { key: 'withdraw_krw', label: '원화 출금', amount: data.patterns.total_withdraw_krw, count: data.patterns.total_withdraw_krw_count, details: data.patterns.withdraw_krw_details },
+                { key: 'deposit_crypto', label: '가상자산 입금', amount: data.patterns.total_deposit_crypto, count: data.patterns.total_deposit_crypto_count, details: data.patterns.deposit_crypto_details },
+                { key: 'withdraw_crypto', label: '가상자산 출금', amount: data.patterns.total_withdraw_crypto, count: data.patterns.total_withdraw_crypto_count, details: data.patterns.withdraw_crypto_details }
             ];
             
             let html = '<div class="orderbook-patterns-grid">';
             items.forEach(item => {
                 if (item.amount > 0 || item.count > 0) {
+                    const formattedAmount = this._formatAmount(item.amount);
+                    const actualAmount = item.amount.toLocaleString('ko-KR');
+                    
                     html += `<div class="pattern-stat-card" data-action="${item.key}">
                         <div class="pattern-stat-label">${item.label}</div>
-                        <div class="pattern-stat-value">${this._formatAmount(item.amount)}</div>
+                        <div class="pattern-stat-value">
+                            ${formattedAmount}
+                            <span class="actual-amount">(${actualAmount}원)</span>
+                        </div>
                         <div class="pattern-stat-count">${item.count.toLocaleString('ko-KR')}건</div>
+                        <div class="pattern-detail" id="detail-${item.key}">
+                            ${this._renderPatternDetail(item.details)}
+                        </div>
                     </div>`;
                 }
             });
@@ -661,8 +668,45 @@
             
             // 이벤트 리스너 추가
             container.querySelectorAll('.pattern-stat-card').forEach(card => {
-                card.addEventListener('click', () => this._togglePatternDetail(card, data.patterns));
+                card.addEventListener('click', (e) => {
+                    // 상세 영역이 아닌 경우에만 토글
+                    if (!e.target.closest('.pattern-detail')) {
+                        const detail = card.querySelector('.pattern-detail');
+                        detail.classList.toggle('show');
+                        card.classList.toggle('expanded');
+                    }
+                });
             });
+        }
+
+        static _renderPatternDetail(details) {
+            if (!details || details.length === 0) {
+                return '<div class="pattern-detail-item">상세 내역이 없습니다.</div>';
+            }
+            
+            let html = '';
+            const maxItems = Math.min(details.length, 20); // 최대 20개
+            
+            for (let i = 0; i < maxItems; i++) {
+                const [ticker, data] = details[i];
+                const amount = Math.abs(data.amount_krw);
+                const formattedAmount = amount.toLocaleString('ko-KR');
+                
+                html += `<div class="pattern-detail-item">
+                    <span class="pattern-detail-ticker">${ticker}</span>: 
+                    ${formattedAmount}원 (${data.count}건)
+                </div>`;
+            }
+            
+            // 20개 이상인 경우 메시지 추가
+            if (details.length > 20) {
+                const remaining = details.length - 20;
+                html += `<div class="pattern-detail-more">
+                    ... 외 ${remaining}개 종목 더보기 (상위 20개만 표시)
+                </div>`;
+            }
+            
+            return html;
         }
 
         static _renderOrderbookDaily(data) {
@@ -671,7 +715,7 @@
             
             document.getElementById('section_orderbook_daily').style.display = 'block';
             
-            // 일자별 테이블 생성 (간소화)
+            // 일자별 테이블 생성
             let html = '<table class="table daily-summary-table"><thead><tr>';
             html += '<th>날짜</th><th>매수</th><th>매도</th><th>원화입금</th><th>원화출금</th>';
             html += '<th>가상자산<br>내부입금</th><th>가상자산<br>내부출금</th>';
@@ -689,35 +733,6 @@
                     <td>${day['가상자산내부출금'].total_amount.toLocaleString('ko-KR')}</td>
                     <td>${day['가상자산외부입금'].total_amount.toLocaleString('ko-KR')}</td>
                     <td>${day['가상자산외부출금'].total_amount.toLocaleString('ko-KR')}</td>
-                </tr>`;
-            });
-            
-            html += '</tbody></table>';
-            container.innerHTML = html;
-        }
-
-        static _renderOrderbookSegments(data) {
-            const container = document.getElementById('result_orderbook_segments');
-            if (!container || !data.summary_data) return;
-            
-            document.getElementById('section_orderbook_segments').style.display = 'block';
-            
-            // 구간별 테이블 생성
-            let html = '<table class="table segments-table"><thead><tr>';
-            html += '<th>구간</th><th>행동</th><th>시작시간</th><th>종료시간</th>';
-            html += '<th>건수</th><th>종목수</th><th>총금액(원)</th>';
-            html += '</tr></thead><tbody>';
-            
-            data.summary_data.forEach(segment => {
-                const amount = Number(segment['총금액(KRW)'] || 0).toLocaleString('ko-KR');
-                html += `<tr>
-                    <td>${segment['구간']}</td>
-                    <td>${segment['행동']}</td>
-                    <td>${segment['시작시간']}</td>
-                    <td>${segment['종료시간']}</td>
-                    <td>${segment['건수']}</td>
-                    <td>${segment['종목수']}</td>
-                    <td style="text-align: right;">${amount}</td>
                 </tr>`;
             });
             
@@ -750,12 +765,13 @@
                 return `${absAmount.toLocaleString('ko-KR')}원`;
             }
             
-            return result.join(' ');
-        }
-
-        static _togglePatternDetail(card, patterns) {
-            // 간단한 토글 구현 (상세 구현 생략)
-            card.classList.toggle('expanded');
+            // 남은 금액이 있으면 추가
+            if (remaining >= 10000) {
+                const manAmount = Math.floor(remaining / 10000);
+                result.push(`${manAmount.toLocaleString('ko-KR')}만`);
+            }
+            
+            return result.join(' ') + '원';
         }
     }
 

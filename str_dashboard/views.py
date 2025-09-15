@@ -1079,11 +1079,13 @@ def get_orderbook_dataframe(cache_key: str) -> Optional[pd.DataFrame]:
     return None
 
 
+# views.py의 analyze_cached_orderbook 함수 수정 부분
+
 @login_required
 @require_POST
 def analyze_cached_orderbook(request):
     """
-    캐시된 Orderbook 데이터를 분석하여 구간별 요약 생성
+    캐시된 Orderbook 데이터를 분석하여 패턴 요약 생성 (구간 분석 제외)
     """
     cache_key = request.POST.get('cache_key', '').strip()
     
@@ -1106,8 +1108,8 @@ def analyze_cached_orderbook(request):
         # 분석기 생성 및 실행
         analyzer = OrderbookAnalyzer(df)
         
-        # 구간별 분석
-        summary_df = analyzer.analyze_segments()
+        # 분석 실행 (구간 분석 제외)
+        analyzer.analyze()
         
         # 텍스트 요약 생성
         text_summary = analyzer.generate_text_summary()
@@ -1118,35 +1120,26 @@ def analyze_cached_orderbook(request):
         # 일자별 요약 가져오기
         daily_summary = analyzer.get_daily_summary()
         
-        # HTML 테이블 생성
-        html_table = analyzer.export_to_html_table()
-        
         # 결과를 캐시에 추가 저장
         if cache_key in ORDERBOOK_CACHE:
             ORDERBOOK_CACHE[cache_key]['analysis'] = {
-                'summary_df': summary_df,
                 'text_summary': text_summary,
                 'patterns': patterns,
                 'daily_summary': daily_summary,
-                'html_table': html_table,
                 'analyzed_at': datetime.now()
             }
         
-        logger.info(f"Orderbook analysis completed for {cache_key}: {len(summary_df)} segments")
+        logger.info(f"Orderbook analysis completed for {cache_key}")
         
         # DataFrame을 JSON으로 변환
-        summary_json = summary_df.to_dict('records') if not summary_df.empty else []
         daily_json = daily_summary.to_dict('records') if not daily_summary.empty else []
         
         return JsonResponse({
             'success': True,
             'cache_key': cache_key,
-            'segments_count': len(summary_df),
-            'summary_data': summary_json,
             'daily_summary': daily_json,
             'text_summary': text_summary,
-            'patterns': patterns,
-            'html_table': html_table
+            'patterns': patterns
         })
         
     except Exception as e:
@@ -1160,7 +1153,7 @@ def analyze_cached_orderbook(request):
 @login_required
 def get_orderbook_summary(request):
     """
-    캐시된 Orderbook의 분석 결과 조회
+    캐시된 Orderbook의 분석 결과 조회 (구간 분석 제외)
     """
     cache_key = request.GET.get('cache_key', '').strip()
     
@@ -1187,7 +1180,6 @@ def get_orderbook_summary(request):
         })
     
     analysis = cache_data['analysis']
-    summary_df = analysis['summary_df']
     
     return JsonResponse({
         'success': True,
@@ -1195,13 +1187,14 @@ def get_orderbook_summary(request):
         'user_id': cache_data['user_id'],
         'period': f"{cache_data['start_date']} ~ {cache_data['end_date']}",
         'rows_count': cache_data['rows_count'],
-        'segments_count': len(summary_df),
         'text_summary': analysis['text_summary'],
         'patterns': analysis['patterns'],
-        'html_table': analysis['html_table'],
         'analyzed_at': analysis['analyzed_at'].strftime('%Y-%m-%d %H:%M:%S'),
         'analyzed': True
     })
+
+
+
 
 
 
