@@ -363,10 +363,16 @@ def query_duplicate_unified(request, oracle_conn=None):
     
     if result.get('success'):
         logger.info(f"Duplicate search successful - found {len(result.get('rows', []))} records")
+        
+        # 세션에 저장 (추가)
+        request.session['duplicate_persons_data'] = {
+            'columns': result.get('columns', []),
+            'rows': result.get('rows', [])
+        }
+        request.session.modified = True
+        
         if full_email:
             logger.info("Note: Email was provided but not used in search due to encryption issues")
-    else:
-        logger.error(f"Duplicate search failed: {result.get('message')}")
     
     return JsonResponse(result)
 
@@ -614,7 +620,7 @@ def query_ip_access_history(request, oracle_conn=None):
         # query_ip_access_history.sql 실행
         result = execute_query_with_error_handling(
             oracle_conn=oracle_conn,
-            sql_filename='query_ip_access_history.sql',  # 실제 파일명으로 수정
+            sql_filename='query_ip_access_history.sql',
             bind_params={
                 ':mem_id': '?',
                 ':start_date': '?', 
@@ -624,10 +630,17 @@ def query_ip_access_history(request, oracle_conn=None):
         )
         
         if result.get('success'):
-            # 해외 접속 건수 로깅
             rows = result.get('rows', [])
             columns = result.get('columns', [])
             
+            # 세션에 저장 (순서 조정 - 로깅 전에 저장)
+            request.session['ip_history_data'] = {
+                'columns': columns,
+                'rows': rows
+            }
+            request.session.modified = True
+            
+            # 해외 접속 건수 로깅
             if rows and columns:
                 country_idx = columns.index('국가한글명') if '국가한글명' in columns else -1
                 if country_idx >= 0:
@@ -1310,7 +1323,12 @@ def prepare_toml_data(request):
         
         # TOML 데이터 수집
         collected_data = toml_collector.collect_all_data(session_data)
+        # 디버깅: 처리된 데이터 로깅
+        logger.info("=== TOML Data Processing Debug ===")
+        logger.info(f"Customer data keys: {collected_data.get('data', {}).get('customer', {}).keys()}")
+        logger.info(f"Orderbook summary: {collected_data.get('data', {}).get('orderbook', {}).get('summary_text', '')[:100]}")
         
+               
         # 임시 파일에 저장
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False, encoding='utf-8') as tmp:
             import toml
