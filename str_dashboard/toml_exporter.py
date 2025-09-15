@@ -69,7 +69,7 @@ class TomlDataCollector:
 
     # toml_exporter.py의 collect_all_data 메서드 수정
     def collect_all_data(self, session_data: Dict[str, Any]) -> Dict[str, Any]:
-        # 세션 키 이름 통일 (current_ prefix 사용)
+        """세션 데이터를 수집하여 TOML 형식으로 변환"""
         collected_data = {
             'metadata': self._create_metadata(),
             'data': {}
@@ -91,6 +91,18 @@ class TomlDataCollector:
         if self.data_selection.get('duplicate_persons') and 'duplicate_persons_data' in session_data:
             collected_data['data']['duplicate_persons'] = self._process_duplicate_persons(
                 session_data['duplicate_persons_data']
+            )
+        
+        # 개인 관련인
+        if self.data_selection.get('person_related') and 'current_person_related_data' in session_data:
+            collected_data['data']['person_related'] = self._process_person_related(
+                session_data['current_person_related_data']
+            )
+        
+        # 법인 관련인
+        if self.data_selection.get('corp_related') and 'current_corp_related_data' in session_data:
+            collected_data['data']['corp_related'] = self._process_table_data(
+                session_data['current_corp_related_data'], 'corp_related'
             )
         
         # IP 이력
@@ -118,6 +130,8 @@ class TomlDataCollector:
             )
         
         return collected_data
+
+
 
     def _create_metadata(self) -> Dict[str, Any]:
         """메타데이터 생성"""

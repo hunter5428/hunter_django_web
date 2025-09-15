@@ -435,11 +435,13 @@
                 });
                 
                 if (data.success) {
-                    // 세션에 저장 (TOML 저장용)
+                    // 세션에 저장 (TOML 저장용) - 서버로 전송
                     this.saveToSession('current_customer_data', {
                         columns: data.columns || [],
-                        rows: data.rows || []
+                        rows: data.rows || [],
+                        customer_type: data.customer_type || null
                     });
+                    
                     // 고객 정보 렌더링
                     window.TableRenderer.renderCustomerUnified(data.columns || [], data.rows || []);
                     
@@ -594,7 +596,7 @@
                 // 1. Orderbook 조회 및 캐싱
                 const response = await this.api.post(window.URLS.query_redshift_orderbook, {
                     user_id: String(memId),
-                    tran_start: tranPeriod.start.split(' ')[0],  // 이미 -3개월 또는 -12개월 적용된 날짜
+                    tran_start: tranPeriod.start.split(' ')[0],
                     tran_end: tranPeriod.end.split(' ')[0]
                 });
                 
@@ -605,8 +607,16 @@
                     });
                     
                     if (analysis.success) {
-                        // 🔥 수정: monthsBack 정보 추가 전달
-                        analysis.monthsBack = tranPeriod.monthsBack;  // 3 또는 12
+                        // monthsBack 정보 추가
+                        analysis.monthsBack = tranPeriod.monthsBack;
+                        
+                        // 세션에 저장 (TOML 저장용)
+                        this.saveToSession('current_orderbook_analysis', {
+                            patterns: analysis.patterns,
+                            period_info: analysis.period_info,
+                            text_summary: analysis.text_summary,
+                            cache_key: response.cache_key
+                        });
                         
                         // ALERT 데이터와 함께 전달
                         window.TableRenderer.renderOrderbookAnalysis(analysis, this.state.alertData);

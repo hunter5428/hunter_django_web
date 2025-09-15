@@ -272,6 +272,15 @@ def rule_history_search(request, oracle_conn=None):
         if len(rows) == 0 and not df1.empty:
             similar_list = find_most_similar_rule_combinations(rule_key, df1)
         
+        # 세션에 저장 (TOML 저장용)
+        request.session['current_rule_history_data'] = {
+            'columns': columns,
+            'rows': rows,
+            'searched_rule': rule_key,
+            'similar_list': similar_list
+        }
+        request.session.modified = True
+        
         logger.info(f"Rule history search completed. Found {len(rows)} matching rows for key: {rule_key}")
         
         if similar_list:
@@ -291,6 +300,8 @@ def rule_history_search(request, oracle_conn=None):
             'success': False,
             'message': f'히스토리 조회 실패: {e}'
         })
+
+
 
 
 @login_required
@@ -1103,16 +1114,15 @@ def analyze_cached_orderbook(request):
         # 일자별 요약 가져오기
         daily_summary = analyzer.get_daily_summary()
         
-        # 🔥 수정: 캐시에 저장된 조회 기간 정보 사용 (실제 데이터 기간이 아닌)
+        # 캐시에 저장된 조회 기간 정보 사용
         period_info = {}
         if cache_key in ORDERBOOK_CACHE:
             cache_data = ORDERBOOK_CACHE[cache_key]
-            # 캐시에 저장된 원본 조회 기간 사용 (D+1 적용 전의 날짜)
             period_info = {
-                'start_date': cache_data['start_date'],  # 이미 -3개월 또는 -12개월 적용된 날짜
-                'end_date': cache_data['end_date'],      # ALERT의 TRAN_END 날짜
-                'query_start': cache_data['start_time'], # 실제 쿼리에 사용된 시간 (D+1 적용)
-                'query_end': cache_data['end_time']      # 실제 쿼리에 사용된 시간 (D+1 적용)
+                'start_date': cache_data['start_date'],
+                'end_date': cache_data['end_date'],
+                'query_start': cache_data['start_time'],
+                'query_end': cache_data['end_time']
             }
         
         # 결과를 캐시에 추가 저장
@@ -1125,6 +1135,15 @@ def analyze_cached_orderbook(request):
                 'analyzed_at': datetime.now()
             }
         
+        # 세션에 저장 (TOML 저장용)
+        request.session['current_orderbook_analysis'] = {
+            'patterns': patterns,
+            'period_info': period_info,
+            'text_summary': text_summary,
+            'cache_key': cache_key
+        }
+        request.session.modified = True
+        
         logger.info(f"Orderbook analysis completed for {cache_key}")
         
         # DataFrame을 JSON으로 변환
@@ -1136,7 +1155,8 @@ def analyze_cached_orderbook(request):
             'daily_summary': daily_json,
             'text_summary': text_summary,
             'patterns': patterns,
-            'period_info': period_info
+            'period_info': period_info,
+            'alert_details': {}  # 초기 빈 딕셔너리
         })
         
     except Exception as e:
@@ -1310,25 +1330,34 @@ def prepare_toml_data(request):
     화면에 렌더링된 데이터를 수집하여 TOML 형식으로 준비
     """
     try:
-        # 세션에서 데이터 수집
+        # 세션에서 모든 관련 데이터 수집
         session_data = {
-            'alert_data': request.session.get('current_alert_data', {}),
-            'customer_data': request.session.get('current_customer_data', {}),
-            'corp_related_data': request.session.get('current_corp_related_data', {}),
-            'person_related_data': request.session.get('current_person_related_data', {}),
-            'rule_history_data': request.session.get('current_rule_history_data', {}),
-            'orderbook_analysis': request.session.get('current_orderbook_analysis', {}),
-            'stds_dtm_summary': request.session.get('current_stds_dtm_summary', {})
+            'current_alert_data': request.session.get('current_alert_data', {}),
+            'current_customer_data': request.session.get('current_customer_data', {}),
+            'current_corp_related_data': request.session.get('current_corp_related_data', {}),
+            'current_person_related_data': request.session.get('current_person_related_data', {}),
+            'current_rule_history_data': request.session.get('current_rule_history_data', {}),
+            'duplicate_persons_data': request.session.get('duplicate_persons_data', {}),
+            'ip_history_data': request.session.get('ip_history_data', {}),
+            'current_orderbook_analysis': request.session.get('current_orderbook_analysis', {}),
+            'current_stds_dtm_summary': request.session.get('current_stds_dtm_summary', {})
         }
+        
+        # 디버깅 로그
+        logger.info("=== Session Data Keys ===")
+        for key, value in session_data.items():
+            if value:
+                logger.info(f"{key}: {type(value)}, keys: {value.keys() if isinstance(value, dict) else 'N/A'}")
         
         # TOML 데이터 수집
         collected_data = toml_collector.collect_all_data(session_data)
+        
         # 디버깅: 처리된 데이터 로깅
         logger.info("=== TOML Data Processing Debug ===")
-        logger.info(f"Customer data keys: {collected_data.get('data', {}).get('customer', {}).keys()}")
-        logger.info(f"Orderbook summary: {collected_data.get('data', {}).get('orderbook', {}).get('summary_text', '')[:100]}")
+        if 'data' in collected_data:
+            for section, content in collected_data['data'].items():
+                logger.info(f"{section}: {type(content)}, size: {len(str(content))}")
         
-               
         # 임시 파일에 저장
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False, encoding='utf-8') as tmp:
             import toml
