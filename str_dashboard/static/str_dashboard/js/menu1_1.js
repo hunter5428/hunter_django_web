@@ -372,7 +372,12 @@
 
                 // 데이터 처리
                 const processedData = DataProcessor.processAlertData(cols, rows, alertId);
-                this.state.setAlertData({ cols, rows, ...processedData });
+                this.state.setAlertData({ 
+                    cols, 
+                    rows, 
+                    currentAlertId: alertId,  // 현재 ALERT ID 명시적으로 추가
+                    ...processedData 
+                });
                 
                 this.saveToSession('current_alert_data', {
                     alert_id: alertId,

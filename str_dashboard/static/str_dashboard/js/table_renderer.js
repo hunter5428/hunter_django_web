@@ -740,14 +740,7 @@
                 return;
             }
             
-            // 대표 ALERT의 STDS_DTM 찾기
-            const repRow = rows.find(r => String(r[idxAlertId]) === String(repAlertId));
-            if (!repRow) {
-                container.innerHTML = '<div class="stds-no-data">대표 ALERT를 찾을 수 없습니다.</div>';
-                return;
-            }
-            
-            const stdsDtm = repRow[idxStdsDtm];
+             const stdsDtm = targetRow[idxStdsDtm];
             if (!stdsDtm) {
                 container.innerHTML = '<div class="stds-no-data">STDS_DTM 정보가 없습니다.</div>';
                 return;
@@ -773,7 +766,7 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.success && data.summary) {
-                        this._renderStdsDtmContent(container, data.summary, repAlertId);
+                        this._renderStdsDtmContent(container, data.summary, inputAlertId || targetRow[idxAlertId]);
                     } else {
                         container.innerHTML = '<div class="stds-no-data">데이터 분석 실패</div>';
                     }
@@ -783,6 +776,10 @@
                     container.innerHTML = '<div class="stds-no-data">분석 중 오류 발생</div>';
                 });
             }
+
+
+
+
         }
 
         static _renderStdsDtmContent(container, summary, alertId) {
