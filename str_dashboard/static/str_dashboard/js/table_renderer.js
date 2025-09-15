@@ -791,99 +791,74 @@
         }
 
         static _renderStdsDtmContent(container, summary, alertId) {
-            let html = '<div class="stds-summary-container">';
+            // "거래원장(Orderbook) 개요"와 동일한 UI 적용
+            const section = document.getElementById('section_stds_dtm_summary');
+            if (section) {
+                const h3 = section.querySelector('h3');
+                if (h3) {
+                    h3.textContent = `대표 ALERT STDS_DTM 날짜 요약 (ALERT ID: ${alertId}, 날짜: ${summary.date})`;
+                }
+            }
             
-            // 헤더
-            html += `<div class="stds-summary-header">
-                <div class="stds-summary-title">ALERT ID: ${alertId}</div>
-                <div class="stds-summary-date">날짜: ${summary.date}</div>
-            </div>`;
-            
-            // 요약 카드
-            html += '<div class="stds-summary-grid">';
-            
-            const cards = [
-                { label: '매수', value: summary.buy_amount, count: summary.buy_count },
-                { label: '매도', value: summary.sell_amount, count: summary.sell_count },
-                { label: '원화 입금', value: summary.deposit_krw_amount, count: summary.deposit_krw_count },
-                { label: '원화 출금', value: summary.withdraw_krw_amount, count: summary.withdraw_krw_count },
-                { label: '가상자산 입금', value: summary.deposit_crypto_amount, count: summary.deposit_crypto_count },
-                { label: '가상자산 출금', value: summary.withdraw_crypto_amount, count: summary.withdraw_crypto_count }
+            // 패턴 카드 HTML 생성 (orderbook patterns와 동일한 구조)
+            const items = [
+                { key: 'buy', label: '총 매수', amount: summary.buy_amount || 0, count: summary.buy_count || 0, details: summary.buy_details || [] },
+                { key: 'sell', label: '총 매도', amount: summary.sell_amount || 0, count: summary.sell_count || 0, details: summary.sell_details || [] },
+                { key: 'deposit_krw', label: '원화 입금', amount: summary.deposit_krw_amount || 0, count: summary.deposit_krw_count || 0, details: [] },
+                { key: 'withdraw_krw', label: '원화 출금', amount: summary.withdraw_krw_amount || 0, count: summary.withdraw_krw_count || 0, details: [] },
+                { key: 'deposit_crypto', label: '가상자산 입금', amount: summary.deposit_crypto_amount || 0, count: summary.deposit_crypto_count || 0, details: summary.deposit_crypto_details || [] },
+                { key: 'withdraw_crypto', label: '가상자산 출금', amount: summary.withdraw_crypto_amount || 0, count: summary.withdraw_crypto_count || 0, details: summary.withdraw_crypto_details || [] }
             ];
             
-            cards.forEach(card => {
-                if (card.value > 0 || card.count > 0) {
-                    html += `<div class="stds-summary-card">
-                        <div class="stds-card-label">${card.label}</div>
-                        <div class="stds-card-value">${this._formatAmount(card.value)}</div>
-                        <div class="stds-card-count">${card.count}건</div>
+            let html = '<div class="orderbook-patterns-grid">';
+            items.forEach(item => {
+                if (item.amount > 0 || item.count > 0) {
+                    const formattedAmount = this._formatAmount(item.amount);
+                    const actualAmount = item.amount.toLocaleString('ko-KR');
+                    
+                    // details 배열을 _renderPatternDetail이 기대하는 형식으로 변환
+                    const formattedDetails = [];
+                    if (item.details && item.details.length > 0) {
+                        // 상위 10개만 사용
+                        item.details.slice(0, 10).forEach(d => {
+                            formattedDetails.push([
+                                d.ticker,
+                                { 
+                                    amount_krw: d.amount || 0, 
+                                    count: d.count || 1 
+                                }
+                            ]);
+                        });
+                    }
+                    
+                    html += `<div class="pattern-stat-card" data-action="${item.key}">
+                        <div class="pattern-stat-label">${item.label}</div>
+                        <div class="pattern-stat-value">
+                            ${formattedAmount}
+                            <span class="actual-amount">(${actualAmount}원)</span>
+                        </div>
+                        <div class="pattern-stat-count">${item.count.toLocaleString('ko-KR')}건</div>
+                        <div class="pattern-detail" id="detail-stds-${item.key}">
+                            ${this._renderPatternDetail(formattedDetails)}
+                        </div>
                     </div>`;
                 }
             });
-            
             html += '</div>';
             
-            // 종목별 상세
-            const hasDetails = (summary.buy_details && summary.buy_details.length > 0) ||
-                            (summary.sell_details && summary.sell_details.length > 0) ||
-                            (summary.deposit_crypto_details && summary.deposit_crypto_details.length > 0) ||
-                            (summary.withdraw_crypto_details && summary.withdraw_crypto_details.length > 0);
-            
-            if (hasDetails) {
-                html += '<div class="stds-details-section">';
-                html += '<div class="stds-details-title">종목별 상세 (상위 10개)</div>';
-                html += '<div class="stds-details-grid">';
-                
-                // 매수 상세
-                if (summary.buy_details && summary.buy_details.length > 0) {
-                    html += this._renderStdsDetailGroup('매수', summary.buy_details);
-                }
-                
-                // 매도 상세
-                if (summary.sell_details && summary.sell_details.length > 0) {
-                    html += this._renderStdsDetailGroup('매도', summary.sell_details);
-                }
-                
-                // 가상자산 입금 상세
-                if (summary.deposit_crypto_details && summary.deposit_crypto_details.length > 0) {
-                    html += this._renderStdsDetailGroup('가상자산 입금', summary.deposit_crypto_details);
-                }
-                
-                // 가상자산 출금 상세
-                if (summary.withdraw_crypto_details && summary.withdraw_crypto_details.length > 0) {
-                    html += this._renderStdsDetailGroup('가상자산 출금', summary.withdraw_crypto_details);
-                }
-                
-                html += '</div></div>';
-            }
-            
-            html += '</div>';
             container.innerHTML = html;
-        }
-
-        static _renderStdsDetailGroup(title, details) {
-            let html = `<div class="stds-detail-group">
-                <div class="stds-detail-group-title">${title}</div>`;
             
-            details.slice(0, 5).forEach(item => {
-                const amount = item.amount ? item.amount.toLocaleString('ko-KR') : '0';
-                html += `<div class="stds-detail-item">
-                    <span class="stds-detail-ticker">${item.ticker}</span>
-                    <span class="stds-detail-amount">${amount}원</span>
-                </div>`;
+            // 이벤트 리스너 추가
+            container.querySelectorAll('.pattern-stat-card').forEach(card => {
+                card.addEventListener('click', (e) => {
+                    if (!e.target.closest('.pattern-detail')) {
+                        const detail = card.querySelector('.pattern-detail');
+                        detail.classList.toggle('show');
+                        card.classList.toggle('expanded');
+                    }
+                });
             });
-            
-            if (details.length > 5) {
-                html += `<div class="stds-detail-item" style="color: #6a6a6a; font-style: italic;">
-                    ... 외 ${details.length - 5}개
-                </div>`;
-            }
-            
-            html += '</div>';
-            return html;
         }
-
-
 
 
         // 새로운 메서드: ALERT ID별 매매/입출고 현황
@@ -918,17 +893,17 @@
                 const repRow = rows.find(r => String(r[idxAlertId]) === String(repAlertId));
                 if (repRow && analysisResult.alert_details && analysisResult.alert_details[repAlertId]) {
                     html += `<div class="alert-detail-section">
-                        <h4 style="color: #4fc3f7; margin-bottom: 10px;">◆ 대표 ALERT ID (${repAlertId}) 상세내역</h4>
+                        <h4 style="margin-bottom: 10px;">◆ 대표 ALERT ID (${repAlertId}) 상세내역</h4>
                         ${this._renderAlertDetail(analysisResult.alert_details[repAlertId])}
                     </div>`;
                 }
             }
             
-            // ALERT ID 목록 테이블
+            // ALERT ID 목록 테이블 (조회기간을 맨 왼쪽으로)
             html += '<div style="margin-top: 20px;">';
             html += '<table class="table alert-orderbook-table"><thead><tr>';
-            html += '<th>STDS_DTM</th><th>STR_ALERT_ID</th><th>STR_RULE_ID</th>';
-            html += '<th>TRAN_STRT</th><th>TRAN_END</th><th>조회기간</th>';
+            html += '<th>조회기간</th><th>STDS_DTM</th><th>STR_ALERT_ID</th><th>STR_RULE_ID</th>';
+            html += '<th>TRAN_STRT</th><th>TRAN_END</th>';
             html += '</tr></thead><tbody>';
             
             // 각 ALERT ID별로 행 생성
@@ -951,21 +926,21 @@
                 
                 const isRep = String(alertId) === String(repAlertId);
                 html += `<tr class="${isRep ? 'rep-row' : ''}" data-alert-id="${alertId}" 
-                         data-rule-id="${ruleId}" data-period-start="${queryPeriod.start}" 
-                         data-period-end="${queryPeriod.end}">`;
+                        data-rule-id="${ruleId}" data-period-start="${queryPeriod.start}" 
+                        data-period-end="${queryPeriod.end}">`;
+                html += `<td style="font-size: 11px; color: #9a9a9a;">${queryPeriod.display}</td>`;
                 html += `<td>${row[idxStdsDtm] || ''}</td>`;
-                html += `<td class="clickable-alert" style="cursor: pointer; color: #4fc3f7; text-decoration: underline;">
-                         ${alertId}</td>`;
+                html += `<td class="clickable-alert" style="cursor: pointer; text-decoration: underline;">
+                        ${alertId}</td>`;
                 html += `<td>${ruleId || ''}</td>`;
                 html += `<td>${tranStart || ''}</td>`;
                 html += `<td>${tranEnd || ''}</td>`;
-                html += `<td style="font-size: 11px; color: #9a9a9a;">${queryPeriod.display}</td>`;
                 html += '</tr>';
                 
                 // 상세 행 (숨김 상태)
                 html += `<tr class="alert-detail-row" id="detail-row-${alertId}" style="display: none;">`;
                 html += `<td colspan="6"><div id="alert-detail-${alertId}" class="alert-detail-content">
-                         <div style="text-align: center; color: #9a9a9a;">로딩 중...</div></div></td>`;
+                        <div style="text-align: center; color: #9a9a9a;">로딩 중...</div></div></td>`;
                 html += '</tr>';
             });
             
@@ -1095,7 +1070,7 @@
                         }[action];
                         
                         html += `<div style="padding: 8px; background: #151515; border-radius: 4px;">`;
-                        html += `<strong style="color: #4fc3f7;">${actionLabel}:</strong><br>`;
+                        html += `<strong>${actionLabel}:</strong><br>`;
                         
                         detail.by_ticker[action].slice(0, 5).forEach(item => {
                             html += `<div style="margin-left: 10px; font-size: 12px;">`;
