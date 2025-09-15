@@ -1,15 +1,14 @@
+# str_dashboard/toml_collector.py
 """
-화면에 렌더링된 데이터를 TOML 형식으로 수집하고 저장하는 모듈
+TOML 데이터 수집 및 조합 로직
+세션 데이터를 수집하여 TOML 형식으로 변환
 """
 
-import toml
 import logging
-from datetime import datetime
 from typing import Dict, Any, List, Optional
-from pathlib import Path
 
-from .toml_config import TomlConfig
-from .toml_processor import TomlDataProcessor
+from .toml_config import toml_config
+from .toml_processor import toml_processor
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +19,8 @@ class TomlDataCollector:
     """
     
     def __init__(self):
-        self.config = TomlConfig()
-        self.processor = TomlDataProcessor()
+        self.config = toml_config
+        self.processor = toml_processor
 
     def collect_all_data(self, session_data: Dict[str, Any]) -> Dict[str, Any]:
         """세션 데이터를 수집하여 TOML 형식으로 변환"""
@@ -155,6 +154,12 @@ class TomlDataCollector:
         mid_idx = columns.index('MID') if 'MID' in columns else -1
         if mid_idx >= 0 and mid_idx < len(row):
             mid = row[mid_idx]
+        
+        # 고객ID 찾기 (cust_id가 없는 경우)
+        if not cust_id:
+            cust_id_idx = columns.index('고객ID') if '고객ID' in columns else -1
+            if cust_id_idx >= 0 and cust_id_idx < len(row):
+                cust_id = row[cust_id_idx]
         
         for idx, col in enumerate(columns):
             if idx < len(row):
@@ -321,7 +326,10 @@ class TomlDataCollector:
         return "\n".join(result) if result else "RULE 히스토리가 없습니다."
 
     def _process_merged_alert_details(self, alert_data: Dict, session_data: Dict) -> Dict[str, Any]:
-        """Alert 상세 정보 병합 처리"""
+        """
+        Alert 상세 정보 병합 처리
+        의심거래 객관식 + ALERT/RULE 발생 내역 + RULE 정보(DISTINCT) + ALERT별 매매/입출고 현황
+        """
         
         if not alert_data or not alert_data.get('rows'):
             return {}
@@ -346,63 +354,41 @@ class TomlDataCollector:
             # 대표 RULE ID를 가진 행 찾기
             for row in rows:
                 if rule_idx >= 0 and rule_idx < len(row) and str(row[rule_idx]) == str(rep_rule_id):
-                    # 필요한 정보 추출
-                    x1_details = self._extract_rule_details(cols, row, rep_rule_id, rule_obj_map)
+                    # STR_RULE_NM
+                    nm_idx = cols.index('STR_RULE_NM') if 'STR_RULE_NM' in cols else -1
+                    if nm_idx >= 0 and nm_idx < len(row):
+                        x1_details['STR_RULE_NM'] = row[nm_idx]
+                    
+                    # 객관식 정보 추가
+                    if rep_rule_id in rule_obj_map:
+                        objectives = rule_obj_map[rep_rule_id]
+                        if isinstance(objectives, list):
+                            x1_details['객관식정보'] = '\n'.join(objectives)
+                        else:
+                            x1_details['객관식정보'] = str(objectives)
+                    
+                    # TRAN_STRT, TRAN_END
+                    start_idx = cols.index('TRAN_STRT') if 'TRAN_STRT' in cols else -1
+                    end_idx = cols.index('TRAN_END') if 'TRAN_END' in cols else -1
+                    if start_idx >= 0 and end_idx >= 0:
+                        start_val = row[start_idx] if start_idx < len(row) else ''
+                        end_val = row[end_idx] if end_idx < len(row) else ''
+                        x1_details['거래기간'] = f"{start_val} ~ {end_val}"
+                    
+                    # STR_RULE_EXTR_COND_CTNT
+                    cond_idx = cols.index('STR_RULE_EXTR_COND_CTNT') if 'STR_RULE_EXTR_COND_CTNT' in cols else -1
+                    if cond_idx >= 0 and cond_idx < len(row):
+                        x1_details['추출조건'] = row[cond_idx]
+                    
+                    # AML_BSS_CTNT
+                    aml_idx = cols.index('AML_BSS_CTNT') if 'AML_BSS_CTNT' in cols else -1
+                    if aml_idx >= 0 and aml_idx < len(row):
+                        x1_details['AML근거'] = row[aml_idx]
+                    
                     break
         
-        # ALERT별 매매/입출고 현황 추가
-        x1_details = self._add_orderbook_summary(x1_details, session_data)
-        
-        # 모든 Rule ID에 대한 간단한 목록 추가
-        all_rules_info = self._build_all_rules_info(canonical_ids, rule_substitution, cols, rows)
-        
-        return {
-            'rule_mapping': ', '.join([f"{k}={v}" for k, v in rule_substitution.items()]),
-            'all_rules': ', '.join(all_rules_info),
-            'X1_details': x1_details
-        }
-
-    def _extract_rule_details(self, cols: List, row: List, rule_id: str, rule_obj_map: Dict) -> Dict:
-        """Rule 상세 정보 추출"""
-        details = {}
-        
-        # STR_RULE_NM
-        nm_idx = cols.index('STR_RULE_NM') if 'STR_RULE_NM' in cols else -1
-        if nm_idx >= 0 and nm_idx < len(row):
-            details['STR_RULE_NM'] = row[nm_idx]
-        
-        # 객관식 정보
-        if rule_id in rule_obj_map:
-            objectives = rule_obj_map[rule_id]
-            if isinstance(objectives, list):
-                details['객관식정보'] = '\n'.join(objectives)
-            else:
-                details['객관식정보'] = str(objectives)
-        
-        # 거래 기간
-        start_idx = cols.index('TRAN_STRT') if 'TRAN_STRT' in cols else -1
-        end_idx = cols.index('TRAN_END') if 'TRAN_END' in cols else -1
-        if start_idx >= 0 and end_idx >= 0:
-            start_val = row[start_idx] if start_idx < len(row) else ''
-            end_val = row[end_idx] if end_idx < len(row) else ''
-            details['거래기간'] = f"{start_val} ~ {end_val}"
-        
-        # 추출 조건
-        cond_idx = cols.index('STR_RULE_EXTR_COND_CTNT') if 'STR_RULE_EXTR_COND_CTNT' in cols else -1
-        if cond_idx >= 0 and cond_idx < len(row):
-            details['추출조건'] = row[cond_idx]
-        
-        # AML 근거
-        aml_idx = cols.index('AML_BSS_CTNT') if 'AML_BSS_CTNT' in cols else -1
-        if aml_idx >= 0 and aml_idx < len(row):
-            details['AML근거'] = row[aml_idx]
-        
-        return details
-
-    def _add_orderbook_summary(self, details: Dict, session_data: Dict) -> Dict:
-        """Orderbook 요약 추가"""
+        # ALERT별 매매/입출고 현황 추가 (Orderbook 분석에서)
         orderbook_data = session_data.get('current_orderbook_analysis', {})
-        
         if orderbook_data and orderbook_data.get('patterns'):
             patterns = orderbook_data['patterns']
             orderbook_summary = []
@@ -421,14 +407,10 @@ class TomlDataCollector:
                 orderbook_summary.append(f"가상자산출금: {self.processor.format_amount(patterns['total_withdraw_crypto'])} ({patterns.get('total_withdraw_crypto_count', 0)}건)")
             
             if orderbook_summary:
-                details['매매_입출고_현황'] = ', '.join(orderbook_summary)
+                x1_details['매매_입출고_현황'] = ', '.join(orderbook_summary)
         
-        return details
-
-    def _build_all_rules_info(self, canonical_ids: List, rule_substitution: Dict, cols: List, rows: List) -> List:
-        """모든 Rule 정보 구성"""
+        # 모든 Rule ID에 대한 간단한 목록 추가
         all_rules_info = []
-        
         for rule_id in canonical_ids:
             substituted = rule_substitution.get(rule_id, rule_id)
             rule_name = ""
@@ -446,7 +428,11 @@ class TomlDataCollector:
             
             all_rules_info.append(f"{substituted}: {rule_name}" if rule_name else substituted)
         
-        return all_rules_info
+        return {
+            'rule_mapping': ', '.join([f"{k}={v}" for k, v in rule_substitution.items()]),
+            'all_rules': ', '.join(all_rules_info),
+            'X1_details': x1_details
+        }
 
     def _process_orderbook_data(self, orderbook_data: Dict) -> str:
         """Orderbook 분석 데이터를 텍스트 요약으로 처리"""
@@ -456,6 +442,7 @@ class TomlDataCollector:
         patterns = orderbook_data.get('patterns', {})
         period_info = orderbook_data.get('period_info', {})
         
+        # toml_processor를 사용하여 텍스트 요약 생성
         return self.processor.format_orderbook_summary(patterns, period_info)
 
     def _process_stds_dtm_summary(self, stds_summary: Dict) -> str:
@@ -463,6 +450,7 @@ class TomlDataCollector:
         if not stds_summary:
             return ""
         
+        # toml_processor를 사용하여 텍스트 요약 생성
         return self.processor.format_stds_dtm_summary(stds_summary)
 
     def _process_ip_history(self, ip_data: Dict) -> str:
@@ -482,22 +470,9 @@ class TomlDataCollector:
                     row_dict[col] = row[idx]
             data_list.append(row_dict)
         
+        # processor를 사용하여 텍스트 요약 생성
         return self.processor.format_ip_access_summary(data_list)
 
-    def save_to_toml(self, data: Dict[str, Any], filepath: str) -> bool:
-        """
-        데이터를 TOML 파일로 저장
-        """
-        try:
-            path = Path(filepath)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            
-            with open(path, 'w', encoding='utf-8') as f:
-                toml.dump(data, f)
-            
-            logger.info(f"TOML file saved successfully: {filepath}")
-            return True
-            
-        except Exception as e:
-            logger.exception(f"Failed to save TOML file: {e}")
-            return False
+
+# 싱글톤 인스턴스
+toml_collector = TomlDataCollector()

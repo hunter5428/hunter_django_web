@@ -1249,98 +1249,6 @@ def analyze_alert_orderbook(request):
         })
 
 
-@login_required
-@require_POST
-def prepare_toml_data(request):
-    """화면에 렌더링된 데이터를 수집하여 TOML 형식으로 준비"""
-    try:
-        # 세션에서 모든 관련 데이터 수집
-        session_data = {
-            'current_alert_data': SessionManager.get_data(request, 'current_alert_data', {}),
-            'current_alert_id': SessionManager.get_data(request, 'current_alert_id', ''),
-            'current_customer_data': SessionManager.get_data(request, 'current_customer_data', {}),
-            'current_corp_related_data': SessionManager.get_data(request, 'current_corp_related_data', {}),
-            'current_person_related_data': SessionManager.get_data(request, 'current_person_related_data', {}),
-            'current_rule_history_data': SessionManager.get_data(request, 'current_rule_history_data', {}),
-            'duplicate_persons_data': SessionManager.get_data(request, 'duplicate_persons_data', {}),
-            'ip_history_data': SessionManager.get_data(request, 'ip_history_data', {}),
-            'current_orderbook_analysis': SessionManager.get_data(request, 'current_orderbook_analysis', {}),
-            'current_stds_dtm_summary': SessionManager.get_data(request, 'current_stds_dtm_summary', {})
-        }
-        
-        # 디버깅 로그
-        logger.info("=== Session Data Keys ===")
-        for key, value in session_data.items():
-            if value:
-                logger.info(f"{key}: {type(value)}, size: {len(str(value))}")
-                if isinstance(value, dict):
-                    logger.info(f"  keys: {list(value.keys())}")
-        
-        # TOML 데이터 수집
-        collected_data = toml_collector.collect_all_data(session_data)
-        
-        # 임시 파일에 저장
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False, encoding='utf-8') as tmp:
-            import toml
-            toml.dump(collected_data, tmp)
-            tmp_path = tmp.name
-        
-        SessionManager.save_data(request, 'toml_temp_path', tmp_path)
-        
-        return JsonResponse({
-            'success': True,
-            'message': 'TOML 데이터 준비 완료',
-            'data_count': len(collected_data),
-            'sections': list(collected_data.keys())
-        })
-        
-    except Exception as e:
-        logger.exception(f"Error preparing TOML data: {e}")
-        return JsonResponse({
-            'success': False,
-            'message': f'TOML 데이터 준비 실패: {str(e)}'
-        })
-
-
-@login_required
-def download_toml(request):
-    """준비된 TOML 파일 다운로드"""
-    try:
-        tmp_path = SessionManager.get_data(request, 'toml_temp_path')
-        if not tmp_path or not Path(tmp_path).exists():
-            return JsonResponse({
-                'success': False,
-                'message': 'TOML 파일을 찾을 수 없습니다.'
-            })
-        
-        alert_id = SessionManager.get_data(request, 'current_alert_id', 'unknown')
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f'str_data_{alert_id}_{timestamp}.toml'
-        
-        response = FileResponse(
-            open(tmp_path, 'rb'),
-            as_attachment=True,
-            filename=filename
-        )
-        
-        def cleanup():
-            try:
-                Path(tmp_path).unlink()
-            except:
-                pass
-        
-        import atexit
-        atexit.register(cleanup)
-        
-        return response
-        
-    except Exception as e:
-        logger.exception(f"Error downloading TOML: {e}")
-        return JsonResponse({
-            'success': False,
-            'message': f'TOML 다운로드 실패: {str(e)}'
-        })
-
 
 @login_required
 @require_POST
@@ -1462,4 +1370,142 @@ def save_to_session(request):
         return JsonResponse({
             'success': False,
             'message': f'Failed to save: {e}'
+        })
+    
+
+
+@login_required
+@require_POST
+def prepare_toml_data(request):
+    """화면에 렌더링된 데이터를 수집하여 TOML 형식으로 준비"""
+    try:
+        # 세션에서 모든 관련 데이터 수집
+        session_data = {
+            'current_alert_data': SessionManager.get_data(request, 'current_alert_data', {}),
+            'current_alert_id': SessionManager.get_data(request, 'current_alert_id', ''),
+            'current_customer_data': SessionManager.get_data(request, 'current_customer_data', {}),
+            'current_corp_related_data': SessionManager.get_data(request, 'current_corp_related_data', {}),
+            'current_person_related_data': SessionManager.get_data(request, 'current_person_related_data', {}),
+            'current_rule_history_data': SessionManager.get_data(request, 'current_rule_history_data', {}),
+            'duplicate_persons_data': SessionManager.get_data(request, 'duplicate_persons_data', {}),
+            'ip_history_data': SessionManager.get_data(request, 'ip_history_data', {}),
+            'current_orderbook_analysis': SessionManager.get_data(request, 'current_orderbook_analysis', {}),
+            'current_stds_dtm_summary': SessionManager.get_data(request, 'current_stds_dtm_summary', {})
+        }
+        
+        # 디버깅 로그
+        logger.info("=== Session Data Keys ===")
+        for key, value in session_data.items():
+            if value:
+                logger.info(f"{key}: {type(value)}, size: {len(str(value))}")
+                if isinstance(value, dict):
+                    logger.info(f"  keys: {list(value.keys())}")
+        
+        # TOML 데이터 수집
+        collected_data = toml_collector.collect_all_data(session_data)
+        
+        # 임시 파일에 저장
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False, encoding='utf-8') as tmp:
+            import toml
+            toml.dump(collected_data, tmp)
+            tmp_path = tmp.name
+        
+        SessionManager.save_data(request, 'toml_temp_path', tmp_path)
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'TOML 데이터 준비 완료',
+            'data_count': len(collected_data),
+            'sections': list(collected_data.keys())
+        })
+        
+    except Exception as e:
+        logger.exception(f"Error preparing TOML data: {e}")
+        return JsonResponse({
+            'success': False,
+            'message': f'TOML 데이터 준비 실패: {str(e)}'
+        })
+
+
+@login_required
+def download_toml(request):
+    """준비된 TOML 파일 다운로드"""
+    try:
+        tmp_path = SessionManager.get_data(request, 'toml_temp_path')
+        if not tmp_path or not Path(tmp_path).exists():
+            return JsonResponse({
+                'success': False,
+                'message': 'TOML 파일을 찾을 수 없습니다.'
+            })
+        
+        alert_id = SessionManager.get_data(request, 'current_alert_id', 'unknown')
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'str_data_{alert_id}_{timestamp}.toml'
+        
+        response = FileResponse(
+            open(tmp_path, 'rb'),
+            as_attachment=True,
+            filename=filename
+        )
+        
+        def cleanup():
+            try:
+                Path(tmp_path).unlink()
+            except:
+                pass
+        
+        import atexit
+        atexit.register(cleanup)
+        
+        return response
+        
+    except Exception as e:
+        logger.exception(f"Error downloading TOML: {e}")
+        return JsonResponse({
+            'success': False,
+            'message': f'TOML 다운로드 실패: {str(e)}'
+        })
+
+
+# views.py 수정 부분
+from .toml import toml_exporter
+
+@login_required
+@require_POST
+def prepare_toml_data(request):
+    """화면에 렌더링된 데이터를 수집하여 TOML 형식으로 준비"""
+    try:
+        # 세션에서 모든 관련 데이터 수집
+        session_data = {
+            'current_alert_data': SessionManager.get_data(request, 'current_alert_data', {}),
+            # ... 기타 데이터
+        }
+        
+        # TOML 파일명 생성
+        alert_id = SessionManager.get_data(request, 'current_alert_id', 'unknown')
+        filename = toml_exporter.generate_filename(alert_id)
+        
+        # 임시 파일 경로
+        tmp_path = f'/tmp/{filename}'
+        
+        # TOML 내보내기
+        success = toml_exporter.export_to_toml(session_data, tmp_path)
+        
+        if success:
+            SessionManager.save_data(request, 'toml_temp_path', tmp_path)
+            return JsonResponse({
+                'success': True,
+                'message': 'TOML 데이터 준비 완료'
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'message': 'TOML 데이터 준비 실패'
+            })
+            
+    except Exception as e:
+        logger.exception(f"Error preparing TOML data: {e}")
+        return JsonResponse({
+            'success': False,
+            'message': f'TOML 데이터 준비 실패: {str(e)}'
         })

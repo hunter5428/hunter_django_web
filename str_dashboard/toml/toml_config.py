@@ -1,14 +1,10 @@
+# str_dashboard/toml_config.py
 """
-TOML Export 상세 설정 파일
-각 섹션별로 포함/제외할 필드와 마스킹 규칙을 정의
+TOML Export 설정 관리
+각 섹션별 마스킹 규칙과 필드 설정을 정의
 """
 
-import re
 from typing import Dict, Any, List, Optional
-from datetime import datetime
-import logging
-
-logger = logging.getLogger(__name__)
 
 
 class TomlFieldConfig:
@@ -18,8 +14,8 @@ class TomlFieldConfig:
     CUSTOMER_INFO = {
         # 고정 마스킹 값 (실제 값과 무관하게 항상 이 값으로 치환)
         'fixed_masking': {
-            '고객ID': 'CUST_ID_PLACEHOLDER',  # 나중에 동적으로 처리
-            'MID': 'MID_PLACEHOLDER',  # 나중에 동적으로 처리
+            '고객ID': '{cust_id}',  # 동적 치환
+            'MID': '{mid}',  # 동적 치환
             '성명': '김빛썸',
             '연락처': '01077778888',
             '이메일': 'kimbithumb@gmail.com',
@@ -194,40 +190,5 @@ class TomlFieldConfig:
     }
 
 
-class TomlConfig:
-    """TOML 설정 관리 클래스"""
-    
-    def __init__(self):
-        self.field_config = TomlFieldConfig()
-    
-    def get_customer_config(self) -> Dict[str, Any]:
-        """고객 정보 설정 반환"""
-        return TomlFieldConfig.CUSTOMER_INFO
-    
-    def get_duplicate_config(self) -> Dict[str, Any]:
-        """중복 회원 설정 반환"""
-        return TomlFieldConfig.DUPLICATE_PERSON
-    
-    def get_related_person_config(self) -> Dict[str, Any]:
-        """관련인 설정 반환"""
-        return TomlFieldConfig.RELATED_PERSON
-    
-    def get_rule_history_config(self) -> Dict[str, Any]:
-        """Rule 히스토리 설정 반환"""
-        return TomlFieldConfig.RULE_HISTORY
-    
-    def get_alert_detail_config(self) -> Dict[str, Any]:
-        """Alert 상세 설정 반환"""
-        return TomlFieldConfig.ALERT_DETAIL
-    
-    def get_orderbook_config(self) -> Dict[str, Any]:
-        """Orderbook 설정 반환"""
-        return TomlFieldConfig.ORDERBOOK_SUMMARY
-    
-    def get_stds_dtm_config(self) -> Dict[str, Any]:
-        """STDS_DTM 설정 반환"""
-        return TomlFieldConfig.STDS_DTM_SUMMARY
-    
-    def get_ip_history_config(self) -> Dict[str, Any]:
-        """IP 이력 설정 반환"""
-        return TomlFieldConfig.IP_ACCESS_HISTORY
+# 싱글톤 인스턴스
+toml_config = TomlFieldConfig()
