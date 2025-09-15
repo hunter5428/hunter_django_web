@@ -12,7 +12,9 @@ import pandas as pd
 from typing import Optional, Dict, Any
 from pathlib import Path
 from .orderbook_analyzer import OrderbookAnalyzer
-
+from .toml_exporter import toml_collector
+import tempfile
+from django.http import FileResponse
 
 from .db_utils import (
     OracleConnection, 
@@ -178,6 +180,11 @@ def query_alert_info(request, oracle_conn=None):
         
         logger.info(f"Alert query result - success: {result.get('success')}, rows: {len(result.get('rows', []))}")
         
+        # 세션에 저장 추가
+        if result.get('success'):
+            request.session['current_alert_id'] = alert_id
+            request.session.modified = True
+        
         return JsonResponse(result)
         
     except Exception as e:
@@ -221,6 +228,15 @@ def query_customer_unified_info(request, oracle_conn=None):
         
         # 응답에 고객 유형 추가
         result['customer_type'] = customer_type
+        
+        # 세션에 저장 추가
+        request.session['current_customer_data'] = {
+            'columns': columns,
+            'rows': rows,
+            'customer_type': customer_type,
+            'cust_id': cust_id
+        }
+        request.session.modified = True
         
         logger.info(f"Unified query successful - customer_type: {customer_type}, rows: {len(rows)}")
     else:
@@ -302,8 +318,6 @@ def rule_history_search(request, oracle_conn=None):
         })
 
 
-
-
 @login_required
 @require_POST
 @require_db_connection
@@ -375,10 +389,18 @@ def query_duplicate_unified(request, oracle_conn=None):
     if result.get('success'):
         logger.info(f"Duplicate search successful - found {len(result.get('rows', []))} records")
         
-        # 세션에 저장 (추가)
+        # 세션에 저장 - 매칭 정보도 함께 저장
         request.session['duplicate_persons_data'] = {
             'columns': result.get('columns', []),
-            'rows': result.get('rows', [])
+            'rows': result.get('rows', []),
+            'match_criteria': {
+                'email': full_email,
+                'phone_suffix': phone_suffix,
+                'address': address,
+                'detail_address': detail_address,
+                'workplace_name': workplace_name,
+                'workplace_address': workplace_address
+            }
         }
         request.session.modified = True
         
@@ -409,6 +431,13 @@ def query_corp_related_persons(request, oracle_conn=None):
     )
     
     if result.get('success'):
+        # 세션에 저장 추가
+        request.session['current_corp_related_data'] = {
+            'columns': result.get('columns', []),
+            'rows': result.get('rows', [])
+        }
+        request.session.modified = True
+        
         logger.info(f"Corp related persons query successful - found {len(result.get('rows', []))} persons")
     else:
         logger.error(f"Corp related persons query failed: {result.get('message')}")
@@ -505,6 +534,10 @@ def query_person_related_summary(request, oracle_conn=None):
                     'tran_amt': row[18],
                     'tran_cnt': row[19]
                 })
+        
+        # 세션에 저장 추가
+        request.session['current_person_related_data'] = related_persons
+        request.session.modified = True
         
         # 텍스트 형식으로 변환
         summary_text = format_related_person_summary(related_persons)
@@ -606,9 +639,6 @@ def format_related_person_summary(related_persons):
     
     return "\n".join(lines)
 
-
-
-# views.py Part 2 - query_ip_access_history부터 끝까지
 
 @login_required
 @require_POST
@@ -1316,13 +1346,9 @@ def analyze_alert_orderbook(request):
             'success': False,
             'message': f'분석 중 오류: {str(e)}'
         })
-    
-# ========== 파일 끝부분에 추가 ==========
 
-from .toml_exporter import toml_collector
-import tempfile
-from django.http import FileResponse
 
+# ========== TOML Export 관련 함수들 ==========
 @login_required
 @require_POST
 def prepare_toml_data(request):
@@ -1333,6 +1359,7 @@ def prepare_toml_data(request):
         # 세션에서 모든 관련 데이터 수집
         session_data = {
             'current_alert_data': request.session.get('current_alert_data', {}),
+            'current_alert_id': request.session.get('current_alert_id', ''),
             'current_customer_data': request.session.get('current_customer_data', {}),
             'current_corp_related_data': request.session.get('current_corp_related_data', {}),
             'current_person_related_data': request.session.get('current_person_related_data', {}),
@@ -1347,16 +1374,17 @@ def prepare_toml_data(request):
         logger.info("=== Session Data Keys ===")
         for key, value in session_data.items():
             if value:
-                logger.info(f"{key}: {type(value)}, keys: {value.keys() if isinstance(value, dict) else 'N/A'}")
+                logger.info(f"{key}: {type(value)}, size: {len(str(value))}")
+                if isinstance(value, dict):
+                    logger.info(f"  keys: {list(value.keys())}")
         
         # TOML 데이터 수집
         collected_data = toml_collector.collect_all_data(session_data)
         
         # 디버깅: 처리된 데이터 로깅
         logger.info("=== TOML Data Processing Debug ===")
-        if 'data' in collected_data:
-            for section, content in collected_data['data'].items():
-                logger.info(f"{section}: {type(content)}, size: {len(str(content))}")
+        for section, content in collected_data.items():
+            logger.info(f"{section}: {type(content)}, size: {len(str(content))}")
         
         # 임시 파일에 저장
         with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False, encoding='utf-8') as tmp:
@@ -1366,12 +1394,13 @@ def prepare_toml_data(request):
         
         # 세션에 임시 파일 경로 저장
         request.session['toml_temp_path'] = tmp_path
+        request.session.modified = True
         
         return JsonResponse({
             'success': True,
             'message': 'TOML 데이터 준비 완료',
-            'data_count': len(collected_data.get('data', {})),
-            'selected_sections': toml_collector.data_selection
+            'data_count': len(collected_data),
+            'sections': list(collected_data.keys())  # data_selection 대신 sections 리스트 반환
         })
         
     except Exception as e:
@@ -1380,6 +1409,7 @@ def prepare_toml_data(request):
             'success': False,
             'message': f'TOML 데이터 준비 실패: {str(e)}'
         })
+
 
 
 @login_required
@@ -1450,7 +1480,6 @@ def analyze_stds_dtm_orderbook(request):
             'success': False,
             'message': f'캐시된 데이터를 찾을 수 없습니다: {cache_key}'
         })
-    
     try:
         # STDS_DTM 날짜로 필터링
         target_date = pd.to_datetime(stds_date).date()
@@ -1507,6 +1536,7 @@ def analyze_stds_dtm_orderbook(request):
         
         # 세션에 저장 (TOML 저장용)
         request.session['current_stds_dtm_summary'] = summary
+        request.session.modified = True
         
         return JsonResponse({
             'success': True,
@@ -1519,7 +1549,6 @@ def analyze_stds_dtm_orderbook(request):
             'success': False,
             'message': f'분석 중 오류: {str(e)}'
         })
-    
 
 
 @login_required
@@ -1566,8 +1595,6 @@ def save_to_session(request):
             'success': False,
             'message': f'Failed to save: {e}'
         })
-
-
 
 
 
