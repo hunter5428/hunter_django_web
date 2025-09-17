@@ -231,3 +231,81 @@
     color: #6bff6b;
     margin-top: 10px;
 }
+
+/* TOML 모달 스타일 추가 */
+.toml-config-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 4000;
+}
+
+.toml-config-modal.show {
+    display: flex;
+}
+
+.toml-config-content {
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 500px;
+    width: 90%;
+}
+
+.toml-config-header {
+    margin-bottom: 20px;
+}
+
+.toml-config-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #eaeaea;
+    margin-bottom: 8px;
+}
+
+.toml-config-desc {
+    color: #bdbdbd;
+    font-size: 14px;
+}
+
+.toml-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.toml-cancel-btn,
+.toml-download-btn {
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: 1px solid #2a2a2a;
+    background: #0f0f0f;
+    color: #eaeaea;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.toml-download-btn {
+    background: #1a1a1a;
+    color: #4fc3f7;
+    border-color: #2a2a2a;
+}
+
+.toml-download-btn:hover {
+    background: #222;
+}
+
+.toml-cancel-btn:hover {
+    background: #151515;
+}
+
+/* TOML 저장 버튼 아이콘 */
+.toml-save-btn svg {
+    width: 16px;
+    height: 16px;
+}

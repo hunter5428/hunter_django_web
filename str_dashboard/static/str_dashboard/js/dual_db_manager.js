@@ -1,10 +1,12 @@
 // str_dashboard/static/str_dashboard/js/dual_db_manager.js
-// 듀얼 데이터베이스 연결 관리 - 간소화 버전
+// 듀얼 데이터베이스 연결 관리 - 에러 수정 버전
 
 (function() {
     'use strict';
 
     const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => document.querySelectorAll(sel);  // querySelectorAll 추가
+    
     const getCookie = (name) => {
         const value = `; ${document.cookie}`;
         const parts = value.split(`; ${name}=`);
@@ -60,7 +62,9 @@
             if (this.modal) {
                 this.modal.style.display = 'flex';
                 this.modal.classList.add('show');
-                $('.connection-status')?.forEach(el => el.style.display = 'none');
+                // querySelectorAll을 사용하여 모든 .connection-status 요소 선택
+                const statusElements = $$('.connection-status');
+                statusElements.forEach(el => el.style.display = 'none');
             }
         }
 

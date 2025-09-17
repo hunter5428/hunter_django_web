@@ -1,9 +1,10 @@
 # str_dashboard/views.py
 
+import os
 import json
 import logging
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse, HttpResponse, HttpResponseBadRequest, FileResponse
+from django.http import JsonResponse, HttpResponse, HttpResponseBadRequest, HttpResponseNotFound, FileResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_POST
 from django.conf import settings
@@ -23,8 +24,10 @@ from .orderbook_analyzer import OrderbookAnalyzer
 from .database import (
     OracleConnection,
     OracleConnectionError,
+    OracleQueryError,
     RedshiftConnection,
     RedshiftConnectionError,
+    RedshiftQueryError,
     execute_oracle_query,
 )
 
@@ -47,6 +50,7 @@ def home(request):
 @login_required
 def menu1_1(request):
     """ALERT ID 조회 페이지"""
+    # 기본값 설정
     context = {
         'active_top_menu': 'menu1',
         'active_sub_menu': 'menu1_1',
@@ -54,6 +58,15 @@ def menu1_1(request):
         'rs_status': request.session.get('rs_conn_status', 'need'),
         'db_info': request.session.get('db_conn', {}),
         'rs_info': request.session.get('rs_conn', {}),
+        # 기본 연결 정보 (환경변수 또는 설정에서 가져오기)
+        'default_host': os.getenv('ORACLE_HOST', ''),
+        'default_port': os.getenv('ORACLE_PORT', '1521'),
+        'default_service': os.getenv('ORACLE_SERVICE', ''),
+        'default_username': os.getenv('ORACLE_USERNAME', ''),
+        'default_rs_host': os.getenv('REDSHIFT_HOST', ''),
+        'default_rs_port': os.getenv('REDSHIFT_PORT', '5439'),
+        'default_rs_dbname': os.getenv('REDSHIFT_DBNAME', ''),
+        'default_rs_username': os.getenv('REDSHIFT_USERNAME', ''),
     }
     return render(request, 'str_dashboard/menu1_1/main.html', context)
 
@@ -81,7 +94,6 @@ def test_oracle_connection(request):
             request.session['db_conn'] = conn_details
             return JsonResponse({'success': True, 'message': '연결에 성공했습니다.'})
         else:
-            # test_connection 내부에서 예외가 발생하므로 이 부분은 실행되지 않을 수 있음
             raise OracleConnectionError("연결 테스트 실패")
             
     except OracleConnectionError as e:
@@ -104,12 +116,72 @@ def test_redshift_connection(request):
             request.session['rs_conn'] = params
             return JsonResponse({'success': True, 'message': 'Redshift 연결에 성공했습니다.'})
         else:
-             raise RedshiftConnectionError("연결 테스트 실패")
+            raise RedshiftConnectionError("연결 테스트 실패")
     except RedshiftConnectionError as e:
         request.session['rs_conn_status'] = 'need'
         return JsonResponse({'success': False, 'message': str(e)})
 
-# connect_all_databases 뷰는 각 DB 연결 테스트 API를 개별적으로 호출하는 프론트엔드 로직으로 대체 가능하므로 삭제
+
+@require_POST
+@login_required
+def connect_all_databases(request):
+    """Oracle과 Redshift 모두 연결"""
+    oracle_params = {
+        'host': request.POST.get('oracle_host', '').strip(),
+        'port': request.POST.get('oracle_port', '').strip(),
+        'service_name': request.POST.get('oracle_service_name', '').strip(),
+        'username': request.POST.get('oracle_username', '').strip(),
+        'password': request.POST.get('oracle_password', '').strip(),
+    }
+    
+    redshift_params = {
+        'host': request.POST.get('redshift_host', '').strip(),
+        'port': request.POST.get('redshift_port', '').strip(),
+        'dbname': request.POST.get('redshift_dbname', '').strip(),
+        'username': request.POST.get('redshift_username', '').strip(),
+        'password': request.POST.get('redshift_password', '').strip(),
+    }
+    
+    result = {'success': False, 'oracle_status': 'fail', 'redshift_status': 'fail'}
+    
+    # Oracle 연결 시도
+    if all(oracle_params.values()):
+        try:
+            oracle_conn_details = {
+                'jdbc_url': OracleConnection.build_jdbc_url(
+                    oracle_params['host'], 
+                    oracle_params['port'], 
+                    oracle_params['service_name']
+                ),
+                'username': oracle_params['username'],
+                'password': oracle_params['password']
+            }
+            oracle_conn = OracleConnection(**oracle_conn_details)
+            
+            if oracle_conn.test_connection():
+                request.session['db_conn_status'] = 'ok'
+                request.session['db_conn'] = oracle_conn_details
+                result['oracle_status'] = 'ok'
+        except OracleConnectionError as e:
+            result['oracle_error'] = str(e)
+            request.session['db_conn_status'] = 'need'
+    
+    # Redshift 연결 시도
+    if all(redshift_params.values()):
+        try:
+            redshift_conn = RedshiftConnection(**redshift_params)
+            if redshift_conn.test_connection():
+                request.session['rs_conn_status'] = 'ok'
+                request.session['rs_conn'] = redshift_params
+                result['redshift_status'] = 'ok'
+        except RedshiftConnectionError as e:
+            result['redshift_error'] = str(e)
+            request.session['rs_conn_status'] = 'need'
+    
+    # 전체 성공 여부
+    result['success'] = (result['oracle_status'] == 'ok' and result['redshift_status'] == 'ok')
+    
+    return JsonResponse(result)
 
 
 # ==================== 통합 데이터 처리 (메인 API) ====================
@@ -141,21 +213,30 @@ def query_all_data_integrated(request):
             
             # 1. ALERT 정보 조회
             alert_result = execute_oracle_query(
-                db_conn, 'alert_info_by_alert_id.sql', {':alert_id': '?'}, [alert_id]
+                db_conn, 'alert_info_by_alert_id.sql', 
+                {':alert_id': '?'}, 
+                [alert_id]
             )
-            if not alert_result.get('success'): return JsonResponse(alert_result)
+            if not alert_result.get('success'): 
+                return JsonResponse(alert_result)
             
+            df_manager.add_dataset('alert_info', alert_result['columns'], alert_result['rows'])
             alert_metadata = df_manager.process_alert_data(alert_result)
+            
             if not alert_metadata.get('cust_id'):
                 return JsonResponse({'success': False, 'message': 'ALERT에 연결된 고객 정보가 없습니다.'})
             
             # 2. 고객 정보 조회
             cust_id = alert_metadata['cust_id']
             customer_result = execute_oracle_query(
-                db_conn, 'customer_unified_info.sql', {':custId': '?'}, [cust_id]
+                db_conn, 'customer_unified_info.sql', 
+                {':custId': '?'}, 
+                [cust_id]
             )
-            if not customer_result.get('success'): return JsonResponse(customer_result)
+            if not customer_result.get('success'): 
+                return JsonResponse(customer_result)
 
+            df_manager.add_dataset('customer_info', customer_result['columns'], customer_result['rows'])
             customer_metadata = df_manager.process_customer_data(customer_result)
             
             # 3. 추가 쿼리 실행
@@ -168,7 +249,9 @@ def query_all_data_integrated(request):
         logger.info(f"Integrated query completed for ALERT ID: {alert_id}")
         
         return JsonResponse({
-            'success': True, 'alert_id': alert_id, 'summary': summary,
+            'success': True, 
+            'alert_id': alert_id, 
+            'summary': summary,
             'message': f"데이터 조회 완료: {len(summary['datasets'])}개 데이터셋"
         })
         
@@ -192,8 +275,9 @@ def _execute_additional_queries(request, db_conn, df_manager, alert_metadata, cu
             df0 = fetch_df_result_0(
                 jdbc_url=db_info['jdbc_url'],
                 driver_class=db_info.get('driver_class', 'oracle.jdbc.driver.OracleDriver'),
-                driver_path=db_info.get('driver_path', os.getenv('ORACLE_JAR')),
-                username=db_info['username'], password=db_info['password']
+                driver_path=db_info.get('driver_path', os.getenv('ORACLE_JAR', r'C:\ojdbc11-21.5.0.0.jar')),
+                username=db_info['username'], 
+                password=db_info['password']
             )
             df1 = aggregate_by_rule_id_list(df0)
             rule_key = ','.join(sorted(alert_metadata['canonical_ids']))
@@ -206,11 +290,13 @@ def _execute_additional_queries(request, db_conn, df_manager, alert_metadata, cu
     # 법인/개인별 분기 처리
     if customer_type == '법인':
         result = execute_oracle_query(
-            db_conn, 'corp_related_persons.sql', {':cust_id': '?'}, [cust_id]
+            db_conn, 'corp_related_persons.sql', 
+            {':cust_id': '?'}, 
+            [cust_id]
         )
         if result.get('success'):
             df_manager.add_dataset('corp_related', result['columns'], result['rows'])
-    else: # 개인
+    else:  # 개인
         tran_start, tran_end = df_manager.calculate_transaction_period()
         if tran_start and tran_end:
             # 개인 관련인
@@ -242,19 +328,37 @@ def _execute_additional_queries(request, db_conn, df_manager, alert_metadata, cu
     if customer_df is not None and not customer_df.empty:
         dup_params = _extract_duplicate_params(customer_df.iloc[0])
         if dup_params:
+            # 바인드 변수 개수와 일치하도록 수정
+            bind_vars = {
+                ':current_cust_id': '?',
+                ':address': '?',
+                ':detail_address': '?',
+                ':current_cust_id_wpn': '?',
+                ':workplace_name': '?',
+                ':current_cust_id_wpa': '?',
+                ':workplace_address': '?',
+                ':workplace_detail_address': '?',
+                ':phone_suffix': '?',
+                ':current_cust_id_final': '?'
+            }
+            
+            bind_values = [
+                cust_id,  # :current_cust_id
+                dup_params['address'],
+                dup_params['detail_address'],
+                cust_id,  # :current_cust_id_wpn
+                dup_params['workplace_name'],
+                cust_id,  # :current_cust_id_wpa
+                dup_params['workplace_address'],
+                dup_params['workplace_detail_address'],
+                dup_params['phone_suffix'],
+                cust_id   # :current_cust_id_final
+            ]
+            
             result = execute_oracle_query(
                 db_conn, 'duplicate_unified.sql',
-                {
-                    ':current_cust_id': '?', ':address': '?', ':detail_address': '?',
-                    ':workplace_name': '?', ':workplace_address': '?', 
-                    ':workplace_detail_address': '?', ':phone_suffix': '?'
-                },
-                [
-                    cust_id, dup_params['address'], dup_params['detail_address'],
-                    cust_id, dup_params['workplace_name'],
-                    cust_id, dup_params['workplace_address'], dup_params['workplace_detail_address'],
-                    dup_params['phone_suffix']
-                ]
+                bind_vars,
+                bind_values
             )
             if result.get('success'):
                 df_manager.add_dataset('duplicate_persons', result['columns'], result['rows'])
@@ -263,16 +367,18 @@ def _execute_additional_queries(request, db_conn, df_manager, alert_metadata, cu
 def _query_orderbook(request, df_manager, mem_id, start_date, end_date):
     """Redshift Orderbook 조회 (내부 함수)"""
     rs_info = request.session.get('rs_conn')
-    if not rs_info: return
+    if not rs_info: 
+        return
 
     try:
-        redshift_conn_helper = RedshiftConnection.from_session(rs_info)
-        sql_query = (Path(settings.BASE_DIR) / 'str_dashboard' / 'queries' / 'redshift_orderbook.sql').read_text('utf-8')
+        redshift_conn = RedshiftConnection.from_session(rs_info)
+        sql_path = Path(settings.BASE_DIR) / 'str_dashboard' / 'queries' / 'redshift_orderbook.sql'
+        sql_query = sql_path.read_text('utf-8')
         
         start_dt = pd.to_datetime(start_date)
         end_dt = pd.to_datetime(end_date)
 
-        with redshift_conn_helper.transaction() as rs_conn:
+        with redshift_conn.transaction() as rs_conn:
             with rs_conn.cursor() as cursor:
                 cursor.execute(sql_query, (start_dt, end_dt, mem_id))
                 if not cursor.description:
@@ -282,19 +388,28 @@ def _query_orderbook(request, df_manager, mem_id, start_date, end_date):
                     rows = cursor.fetchall()
 
         if cols and rows:
-            df_manager.add_dataset('orderbook', cols, rows, user_id=mem_id, start_date=start_date, end_date=end_date)
+            df_manager.add_dataset('orderbook', cols, rows, 
+                                    user_id=mem_id, 
+                                    start_date=start_date, 
+                                    end_date=end_date)
             df = df_manager.get_dataframe('orderbook')
-            analyzer = OrderbookAnalyzer(df)
-            analyzer.analyze()
-            analysis_result = {
-                'text_summary': analyzer.generate_text_summary(),
-                'patterns': analyzer.get_pattern_analysis(),
-                'daily_summary': analyzer.get_daily_summary().to_dict('records')
-            }
-            df_manager.add_dataset('orderbook_analysis', ['analysis_type', 'data'], [['summary', analysis_result]])
+            if df is not None and not df.empty:
+                analyzer = OrderbookAnalyzer(df)
+                analyzer.analyze()
+                analysis_result = {
+                    'text_summary': analyzer.generate_text_summary(),
+                    'patterns': analyzer.get_pattern_analysis(),
+                    'daily_summary': analyzer.get_daily_summary().to_dict('records')
+                }
+                df_manager.add_dataset('orderbook_analysis', 
+                                      ['analysis_type', 'data'], 
+                                      [['summary', analysis_result]])
             
-    except (RedshiftConnectionError, RedshiftQueryError, Exception) as e:
+    except (RedshiftConnectionError, RedshiftQueryError) as e:
         logger.error(f"Orderbook query failed: {e}")
+    except Exception as e:
+        logger.exception(f"Unexpected error in orderbook query: {e}")
+
 
 def _extract_duplicate_params(customer_row: pd.Series) -> Dict[str, Any]:
     """고객 정보에서 중복 검색 파라미터 추출"""
@@ -307,6 +422,7 @@ def _extract_duplicate_params(customer_row: pd.Series) -> Dict[str, Any]:
         'workplace_detail_address': customer_row.get('직장상세주소', ''),
         'phone_suffix': str(phone)[-4:] if phone and len(str(phone)) >= 4 else None,
     }
+
 
 # ==================== DataFrame Manager APIs ====================
 
@@ -321,11 +437,13 @@ def get_dataframe_manager_status(request):
     summary = df_manager.get_all_datasets_summary()
     
     return JsonResponse({
-        'success': True, 'summary': summary,
+        'success': True, 
+        'summary': summary,
         'datasets_list': list(df_manager.datasets.keys()),
         'alert_id': df_manager.alert_id,
         'total_memory_mb': summary.get('total_memory_mb', 0)
     })
+
 
 @login_required
 def export_dataframe_to_csv(request):
@@ -351,6 +469,7 @@ def export_dataframe_to_csv(request):
     response['Content-Disposition'] = f'attachment; filename="{dataset_name}_{datetime.now().strftime("%Y%m%d")}.csv"'
     return response
 
+
 # ==================== TOML Export ====================
 
 @require_POST
@@ -374,13 +493,16 @@ def prepare_toml_data(request):
         toml_exporter.save_to_file(collected_data, tmp_path)
         
         return JsonResponse({
-            'success': True, 'message': 'TOML 데이터 준비 완료',
-            'filename': filename, 'sections': list(collected_data.keys())
+            'success': True, 
+            'message': 'TOML 데이터 준비 완료',
+            'filename': filename, 
+            'sections': list(collected_data.keys())
         })
             
     except Exception as e:
         logger.exception(f"Error preparing TOML data: {e}")
         return JsonResponse({'success': False, 'message': f'TOML 데이터 준비 실패: {str(e)}'})
+
 
 @login_required
 def download_toml(request):
@@ -394,7 +516,36 @@ def download_toml(request):
         return HttpResponseNotFound('TOML 파일을 찾을 수 없습니다. 다시 시도해주세요.')
         
     try:
-        return FileResponse(open(tmp_path, 'rb'), as_attachment=True, filename=tmp_path.name)
+        return FileResponse(
+            open(tmp_path, 'rb'), 
+            as_attachment=True, 
+            filename=tmp_path.name
+        )
     except Exception as e:
         logger.exception(f"Error downloading TOML: {e}")
-        return JsonResponse({'success': False, 'message': f'TOML 다운로드 실패: {str(e)}'})
+        return HttpResponse(
+            f'TOML 다운로드 실패: {str(e)}', 
+            status=500
+        )
+
+
+# ==================== 세션 관리 ====================
+
+@require_POST
+@login_required
+def save_to_session(request):
+    """데이터를 세션에 저장 (범용)"""
+    try:
+        data = json.loads(request.body)
+        key = data.get('key')
+        value = data.get('value')
+        
+        if not key:
+            return JsonResponse({'success': False, 'message': 'Key is required'})
+        
+        request.session[key] = value
+        return JsonResponse({'success': True, 'message': 'Saved to session'})
+        
+    except Exception as e:
+        logger.exception(f"Error saving to session: {e}")
+        return JsonResponse({'success': False, 'message': str(e)})
