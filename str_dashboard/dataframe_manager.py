@@ -49,7 +49,7 @@ class DataFrameManager:
         """
         try:
             if not columns or not rows:
-                df = pd.DataFrame()
+                df = pd.DataFrame(columns=columns) # 컬럼 정보 유지를 위해 빈 df 생성 방식 변경
             else:
                 df = pd.DataFrame(rows, columns=columns)
             
@@ -83,7 +83,7 @@ class DataFrameManager:
                 'name': name,
                 'shape': df.shape,
                 'columns': list(df.columns),
-                'dtypes': df.dtypes.to_dict(),
+                'dtypes': {col: str(dtype) for col, dtype in df.dtypes.to_dict().items()},
                 'memory_usage': df.memory_usage(deep=True).sum(),
                 'created_at': dataset['created_at'],
                 'metadata': dataset.get('metadata', {})
@@ -116,7 +116,7 @@ class DataFrameManager:
         if not cols or not rows:
             return metadata
         
-        df = pd.DataFrame(rows, columns=cols)
+        df = self.get_dataframe('alert_info')
         
         # Rule ID 추출
         if 'STR_RULE_ID' in df.columns:
@@ -124,7 +124,7 @@ class DataFrameManager:
             metadata['canonical_ids'] = [str(rid) for rid in canonical_ids]
             
             # 대표 Rule ID (ALERT ID가 일치하는 행)
-            if 'STR_ALERT_ID' in df.columns:
+            if 'STR_ALERT_ID' in df.columns and self.alert_id:
                 rep_rows = df[df['STR_ALERT_ID'] == self.alert_id]
                 if not rep_rows.empty:
                     metadata['rep_rule_id'] = str(rep_rows.iloc[0]['STR_RULE_ID'])
@@ -140,9 +140,9 @@ class DataFrameManager:
             tran_starts = pd.to_datetime(df['TRAN_STRT'].dropna(), errors='coerce')
             tran_ends = pd.to_datetime(df['TRAN_END'].dropna(), errors='coerce')
             
-            if len(tran_starts) > 0:
+            if not tran_starts.empty:
                 metadata['tran_start'] = tran_starts.min().strftime('%Y-%m-%d %H:%M:%S.%f')
-            if len(tran_ends) > 0:
+            if not tran_ends.empty:
                 metadata['tran_end'] = tran_ends.max().strftime('%Y-%m-%d %H:%M:%S.%f')
         
         # 메타데이터 저장
@@ -163,22 +163,25 @@ class DataFrameManager:
             'mid': None
         }
         
-        if cols and rows:
-            df = pd.DataFrame(rows, columns=cols)
-            
+        df = self.get_dataframe('customer_info')
+        if df is not None and not df.empty:
             # 고객 유형
-            if '고객구분' in df.columns and len(df) > 0:
+            if '고객구분' in df.columns:
                 metadata['customer_type'] = df.iloc[0]['고객구분']
             
             # KYC 완료일시
-            if 'KYC완료일시' in df.columns and len(df) > 0:
-                metadata['kyc_datetime'] = df.iloc[0]['KYC완료일시']
-                self.metadata['kyc_datetime'] = metadata['kyc_datetime']
+            if 'KYC완료일시' in df.columns:
+                kyc_dt = df.iloc[0]['KYC완료일시']
+                if pd.notna(kyc_dt):
+                    metadata['kyc_datetime'] = str(kyc_dt)
+                    self.metadata['kyc_datetime'] = str(kyc_dt)
             
             # MID
-            if 'MID' in df.columns and len(df) > 0:
-                metadata['mid'] = df.iloc[0]['MID']
-                self.metadata['mid'] = metadata['mid']
+            if 'MID' in df.columns:
+                mid_val = df.iloc[0]['MID']
+                if pd.notna(mid_val):
+                    metadata['mid'] = str(mid_val)
+                    self.metadata['mid'] = str(mid_val)
         
         return metadata
     
@@ -187,35 +190,31 @@ class DataFrameManager:
         거래 기간 계산 (KYC 시점 고려)
         
         Returns:
-            (start_date, end_date) 튜플
+            (start_date, end_date) 튜플 (ISO 형식 문자열)
         """
-        tran_start = self.metadata.get('tran_start')
-        tran_end = self.metadata.get('tran_end')
-        kyc_datetime = self.metadata.get('kyc_datetime')
-        
-        if not tran_end:
+        tran_end_str = self.metadata.get('tran_end')
+        if not tran_end_str:
             return None, None
-        
+
+        end_date = pd.to_datetime(tran_end_str)
         # 기본값: 종료일 기준 3개월 전
-        end_date = pd.to_datetime(tran_end.split(' ')[0])
         start_date = end_date - timedelta(days=90)
         
         # KYC 완료일시가 있으면 더 이른 날짜 사용
-        if kyc_datetime:
-            kyc_date = pd.to_datetime(kyc_datetime.split(' ')[0])
+        kyc_datetime_str = self.metadata.get('kyc_datetime')
+        if kyc_datetime_str:
+            kyc_date = pd.to_datetime(kyc_datetime_str)
             if kyc_date < start_date:
                 start_date = kyc_date
         
         # 원래 시작일이 있으면 비교
-        if tran_start:
-            orig_start = pd.to_datetime(tran_start.split(' ')[0])
+        tran_start_str = self.metadata.get('tran_start')
+        if tran_start_str:
+            orig_start = pd.to_datetime(tran_start_str)
             if orig_start < start_date:
                 start_date = orig_start
         
-        return (
-            start_date.strftime('%Y-%m-%d %H:%M:%S.%f'),
-            end_date.strftime('%Y-%m-%d %H:%M:%S.%f')
-        )
+        return start_date.strftime('%Y-%m-%d %H:%M:%S.%f'), end_date.strftime('%Y-%m-%d %H:%M:%S.%f')
     
     def get_all_datasets_summary(self) -> Dict[str, Any]:
         """
@@ -229,22 +228,17 @@ class DataFrameManager:
             'total_memory': 0
         }
         
-        for name, dataset in self.datasets.items():
-            df = dataset['dataframe']
-            info = {
-                'shape': df.shape,
-                'columns': list(df.columns),
-                'memory_usage_bytes': df.memory_usage(deep=True).sum(),
-                'created_at': dataset['created_at'],
-                'has_data': not df.empty
+        for name in self.datasets.keys():
+            info = self.get_dataset_info(name)
+            summary_info = {
+                'shape': info.get('shape'),
+                'columns': info.get('columns'),
+                'memory_usage_bytes': info.get('memory_usage'),
+                'created_at': info.get('created_at'),
+                'has_data': info.get('shape', (0,0))[0] > 0
             }
-            
-            # 샘플 데이터 (처음 5행)
-            if not df.empty:
-                info['sample'] = df.head(5).to_dict('records')
-            
-            summary['datasets'][name] = info
-            summary['total_memory'] += info['memory_usage_bytes']
+            summary['datasets'][name] = summary_info
+            summary['total_memory'] += summary_info.get('memory_usage_bytes', 0)
         
         # 메모리 크기를 읽기 쉽게 변환
         summary['total_memory_mb'] = round(summary['total_memory'] / 1024 / 1024, 2)
@@ -264,29 +258,29 @@ class DataFrameManager:
         
         for name, dataset in self.datasets.items():
             df = dataset['dataframe']
+            # NaN, NaT 값을 None으로 변환하여 JSON 직렬화 오류 방지
+            df_cleaned = df.replace({pd.NaT: None}).where(pd.notnull(df), None)
+            
             export_data['datasets'][name] = {
-                'columns': list(df.columns),
-                'rows': df.values.tolist() if not df.empty else [],
+                'columns': list(df_cleaned.columns),
+                'rows': df_cleaned.values.tolist() if not df_cleaned.empty else [],
                 'metadata': dataset.get('metadata', {})
             }
         
         return export_data
     
-    def import_from_dict(self, data: Dict[str, Any]):
-        """딕셔너리에서 데이터 가져오기"""
-        self.reset()
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'DataFrameManager':
+        """딕셔너리에서 DataFrameManager 인스턴스 복원"""
+        manager = cls()
+        manager.alert_id = data.get('alert_id')
+        manager.metadata = data.get('metadata', {})
         
-        self.alert_id = data.get('alert_id')
-        self.metadata = data.get('metadata', {})
-        
-        for name, dataset in data.get('datasets', {}).items():
-            self.add_dataset(
+        for name, dataset_data in data.get('datasets', {}).items():
+            manager.add_dataset(
                 name=name,
-                columns=dataset.get('columns', []),
-                rows=dataset.get('rows', []),
-                **dataset.get('metadata', {})
+                columns=dataset_data.get('columns', []),
+                rows=dataset_data.get('rows', []),
+                **dataset_data.get('metadata', {})
             )
-
-
-# 싱글톤 인스턴스
-df_manager = DataFrameManager()
+        return manager
