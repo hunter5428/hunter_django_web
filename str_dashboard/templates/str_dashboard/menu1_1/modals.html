@@ -1,0 +1,38 @@
+<div class="modal-backdrop dual-db-modal" id="db-modal">
+    <div class="modal">
+        <h3>데이터베이스 연결 설정</h3>
+        <div class="dual-db-container">
+            <div class="db-section">
+                <h4>Oracle Database</h4>
+                <div class="grid">
+                    <label for="oracle_host">Host</label> <input id="oracle_host" type="text" value="{{ default_host }}">
+                    <label for="oracle_port">Port</label> <input id="oracle_port" type="text" value="{{ default_port }}">
+                    <label for="oracle_service">Service</label> <input id="oracle_service" type="text" value="{{ default_service }}">
+                    <label for="oracle_username">Username</label> <input id="oracle_username" type="text">
+                    <label for="oracle_password">Password</label> <input id="oracle_password" type="password">
+                </div>
+                <div style="margin-top: 10px; text-align: right;">
+                    <button class="btn btn-secondary" id="btn-test-oracle">연결 테스트</button>
+                    <span id="oracle-test-result" class="connection-status"></span>
+                </div>
+            </div>
+            <div class="db-section">
+                <h4>Amazon Redshift</h4>
+                <div class="grid">
+                    <label for="redshift_host">Host</label> <input id="redshift_host" type="text" value="{{ default_rs_host }}">
+                    <label for="redshift_port">Port</label> <input id="redshift_port" type="text" value="{{ default_rs_port }}">
+                    <label for="redshift_dbname">Database</label> <input id="redshift_dbname" type="text" value="{{ default_rs_dbname }}">
+                    <label for="redshift_username">Username</label> <input id="redshift_username" type="text">
+                    <label for="redshift_password">Password</label> <input id="redshift_password" type="password">
+                </div>
+                <div style="margin-top: 10px; text-align: right;">
+                    <button class="btn btn-secondary" id="btn-test-redshift">연결 테스트</button>
+                    <span id="redshift-test-result" class="connection-status"></span>
+                </div>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn" id="btn-close-db-modal">닫기</button>
+        </div>
+    </div>
+</div>

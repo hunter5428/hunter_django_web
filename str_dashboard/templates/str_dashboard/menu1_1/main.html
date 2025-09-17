@@ -2,14 +2,8 @@
 {% load static %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'str_dashboard/css/base.css' %}">
-
 <link rel="stylesheet" href="{% static 'str_dashboard/css/components/common.css' %}">
-<link rel="stylesheet" href="{% static 'str_dashboard/css/components/scaffolding.css' %}">
 <link rel="stylesheet" href="{% static 'str_dashboard/css/components/modal.css' %}">
-<link rel="stylesheet" href="{% static 'str_dashboard/css/components/table.css' %}">
-
-<link rel="stylesheet" href="{% static 'str_dashboard/css/pages/menu1_1.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -33,172 +27,22 @@
     <span class="label-chip">ALERT ID</span>
     <input id="alert_id_input" type="text" class="form-input" placeholder="ALERT ID를 입력하세요">
     <button class="btn" id="alert_id_search_btn">조회</button>
-    <button class="btn toml-save-btn" id="toml_save_btn" style="display: none;">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <line x1="16" y1="13" x2="8" y2="13"/>
-            <line x1="16" y1="17" x2="8" y2="17"/>
-            <polyline points="10 9 9 9 8 9"/>
-        </svg>
-        TOML 저장
-    </button>
 </div>
 
-<div class="split-layout-container">
-    <div class="split-left">
-        <div id="section_customer_unified" class="section" style="display:none;">
-            <h3>고객 정보</h3>
-            <div class="table-wrap" id="result_table_customer_unified"></div>
-        </div>
-    </div>
-    <div class="split-right">
-        <div id="section_duplicate_persons" class="section" style="display:none;">
-            <h3>동일_차명의심_상세 정보</h3>
-            <div class="table-wrap" id="result_table_duplicate_persons"></div>
-        </div>
-    </div>
-</div>
-
-<div id="section_corp_related" class="section" style="display:none;">
-    <h3>법인 관련인 정보</h3>
-    <div class="table-wrap" id="result_table_corp_related"></div>
-</div>
-
-<div id="section_person_related" class="section" style="display:none;">
-    <h3>개인 관련인 정보 (내부입출금 거래)</h3>
-    <div class="table-wrap" id="result_table_person_related"></div>
-</div>
-
-<div id="section_rule_hist" class="section" style="display:none;">
-    <h3>RULE_ID_히스토리 탐색</h3>
-    <div class="table-wrap" id="result_table_rule_hist"></div>
-</div>
-
-<div id="section_objectives" class="section" style="display:none;">
-    <h3>의심거래 객관식 정보</h3>
-    <div class="table-wrap" id="result_table_objectives"></div>
-</div>
-
-<div id="section_alert_rule" class="section" style="display:none;">
-    <h3>ALERT / RULE 발생 내역</h3>
-    <div class="table-wrap" id="result_table_alert_rule"></div>
-</div>
-
-<div id="section_rule_distinct" class="section" style="display:none;">
-    <h3>발생한 RULE의 정보(DISTINCT)</h3>
-    <div class="table-wrap" id="result_table_rule_distinct"></div>
-</div>
-
-<div id="section_ip_access_history" class="section collapsed" style="display:none;">
-    <h3>IP 접속 이력</h3>
-    <div class="table-wrap" id="result_table_ip_access_history"></div>
-</div>
-
-<div class="modal-backdrop dual-db-modal" id="db-modal">
-    <div class="modal">
-        <h3>데이터베이스 연결 설정</h3>
-        <div class="dual-db-container">
-            <div class="db-section">
-                <h4>Oracle Database</h4>
-                <div class="grid">
-                    <label for="oracle_host">Host</label> <input id="oracle_host" type="text" value="{{ default_host }}">
-                    <label for="oracle_port">Port</label> <input id="oracle_port" type="text" value="{{ default_port }}">
-                    <label for="oracle_service">Service</label> <input id="oracle_service" type="text" value="{{ default_service }}">
-                    <label for="oracle_username">Username</label> <input id="oracle_username" type="text" value="{{ default_username }}">
-                    <label for="oracle_password">Password</label> <input id="oracle_password" type="password">
-                </div>
-                <div style="margin-top: 10px; text-align: right;">
-                    <button class="btn btn-secondary" id="btn-test-oracle">연결 테스트</button>
-                    <span id="oracle-test-result" class="connection-status"></span>
-                </div>
-            </div>
-            <div class="db-section">
-                <h4>Amazon Redshift</h4>
-                <div class="grid">
-                    <label for="redshift_host">Host</label> <input id="redshift_host" type="text" value="{{ default_rs_host }}">
-                    <label for="redshift_port">Port</label> <input id="redshift_port" type="text" value="{{ default_rs_port }}">
-                    <label for="redshift_dbname">Database</label> <input id="redshift_dbname" type="text" value="{{ default_rs_dbname }}">
-                    <label for="redshift_username">Username</label> <input id="redshift_username" type="text" value="{{ default_rs_username }}">
-                    <label for="redshift_password">Password</label> <input id="redshift_password" type="password">
-                </div>
-                <div style="margin-top: 10px; text-align: right;">
-                    <button class="btn btn-secondary" id="btn-test-redshift">연결 테스트</button>
-                    <span id="redshift-test-result" class="connection-status"></span>
-                </div>
-            </div>
-        </div>
-        <div class="modal-actions">
-            <div class="modal-actions-left"><button class="btn" id="btn-close-db-modal">닫기</button></div>
-            <button class="btn btn-primary" id="btn-connect-all">모두 연결</button>
-        </div>
-    </div>
-</div>
-
-<div class="modal-backdrop toml-config-modal" id="toml-config-modal">
-    <div class="modal">
-        <div class="toml-config-header">
-            <div class="toml-config-title">TOML 데이터 저장</div>
-            <div class="toml-config-desc">화면에 표시된 데이터를 TOML 형식으로 저장합니다.</div>
-        </div>
-        <div class="toml-selection-group">
-            <div class="toml-selection-title">저장할 데이터</div>
-            <div class="toml-checkbox-item"><input type="checkbox" id="toml-alert-info" checked disabled><label class="toml-checkbox-label">Alert 정보</label><span class="toml-checkbox-desc">필수</span></div>
-            <div class="toml-checkbox-item"><input type="checkbox" id="toml-customer" checked disabled><label class="toml-checkbox-label">고객 정보</label><span class="toml-checkbox-desc">필수</span></div>
-            <div class="toml-checkbox-item"><input type="checkbox" id="toml-rule" checked disabled><label class="toml-checkbox-label">Rule 정보</label><span class="toml-checkbox-desc">필수</span></div>
-            <div class="toml-checkbox-item"><input type="checkbox" id="toml-orderbook" checked disabled><label class="toml-checkbox-label">Orderbook 분석</label><span class="toml-checkbox-desc">필수</span></div>
-            <div class="toml-checkbox-item"><input type="checkbox" id="toml-stds" checked disabled><label class="toml-checkbox-label">STDS_DTM 요약</label><span class="toml-checkbox-desc">필수</span></div>
-        </div>
-        <div class="modal-actions toml-modal-actions">
-            <button class="btn toml-cancel-btn">취소</button>
-            <button class="btn btn-primary toml-download-btn">다운로드</button>
-        </div>
-    </div>
-</div>
+{% include "str_dashboard/menu1_1/modals.html" %} 
 {% endblock %}
 
 {% block extra_js %}
 <script>
-// 전역 설정
-window.RULE_OBJ_MAP = {{ rule_obj_map_json|safe }};
-
+// 전역 URL 설정 (필수 API만 남김)
 window.URLS = {
     test_oracle_connection: "{% url 'test_oracle_connection' %}",
     test_redshift_connection: "{% url 'test_redshift_connection' %}",
-    connect_all_databases: "{% url 'connect_all_databases' %}",
-    query_alert: "{% url 'query_alert_info' %}",
-    query_customer_unified: "{% url 'query_customer_unified' %}",
-    rule_history: "{% url 'rule_history_search' %}",
-    query_duplicate_unified: "{% url 'query_duplicate_unified' %}",
-    query_corp_related_persons: "{% url 'query_corp_related_persons' %}",
-    query_person_related_summary: "{% url 'query_person_related_summary' %}",
-    query_ip_access_history: "{% url 'query_ip_access_history' %}",
-    query_redshift_orderbook: "{% url 'query_redshift_orderbook' %}",
-    get_cached_orderbook_info: "{% url 'get_cached_orderbook_info' %}",
-    clear_orderbook_cache: "{% url 'clear_orderbook_cache' %}",
-    analyze_cached_orderbook: "{% url 'analyze_cached_orderbook' %}",
-    get_orderbook_summary: "{% url 'get_orderbook_summary' %}",
-    analyze_alert_orderbook: "{% url 'analyze_alert_orderbook' %}",
-    prepare_toml_data: "{% url 'prepare_toml_data' %}",
-    download_toml: "{% url 'download_toml' %}",
-    save_to_session: "{% url 'save_to_session' %}",
-    analyze_stds_dtm_orderbook: "{% url 'analyze_stds_dtm_orderbook' %}"
+    query_alert_info: "{% url 'query_alert_info' %}",
 };
 </script>
 
-<script src="{% static 'str_dashboard/js/utils/helpers.js' %}"></script>
-<script src="{% static 'str_dashboard/js/utils/api_client.js' %}"></script>
-<script src="{% static 'str_dashboard/js/utils/ui_manager.js' %}"></script>
-
-<script src="{% static 'str_dashboard/js/rule_utils.js' %}"></script>
-<script src="{% static 'str_dashboard/js/renderers/base_table.js' %}"></script>
-<script src="{% static 'str_dashboard/js/renderers/customer_renderer.js' %}"></script>
-<script src="{% static 'str_dashboard/js/renderers/rule_renderer.js' %}"></script>
-<script src="{% static 'str_dashboard/js/renderers/orderbook_renderer.js' %}"></script>
-<script src="{% static 'str_dashboard/js/table_renderer.js' %}"></script> <script src="{% static 'str_dashboard/js/page/search_state.js' %}"></script>
-<script src="{% static 'str_dashboard/js/page/data_processor.js' %}"></script>
-<script src="{% static 'str_dashboard/js/page/toml_exporter.js' %}"></script>
-<script src="{% static 'str_dashboard/js/page/alert_search_manager.js' %}"></script>
-
-<script src="{% static 'str_dashboard/js/dual_db_manager.js' %}"></script>
-<script src="{% static 'str_dashboard/js/menu1_1.js' %}"></script> {% endblock %}
+{#<script src="{% static 'str_dashboard/js/utils/api_client.js' %}"></script>#}
+{#<script src="{% static 'str_dashboard/js/dual_db_manager.js' %}"></script>#}
+{#<script src="{% static 'str_dashboard/js/menu1_1.js' %}"></script>#}
+{% endblock %}
