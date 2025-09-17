@@ -1,0 +1,215 @@
+/* str_dashboard/static/str_dashboard/css/alert_orderbook.css */
+
+/* ==================== ALERT ID별 매매/입출고 현황 스타일 ==================== */
+
+.alert-orderbook-table {
+    width: 100%;
+    font-size: 13px;
+}
+
+.alert-orderbook-table th {
+    background: #111;
+    color: #bdbdbd;
+    font-weight: 700;
+    padding: 10px;
+    border-bottom: 1px solid #2a2a2a;
+    text-align: left;
+}
+
+.alert-orderbook-table td {
+    padding: 10px;
+    border-bottom: 1px solid #2a2a2a;
+    color: #eaeaea;
+}
+
+.alert-orderbook-table tr:hover td {
+    background: #1a1a1a;
+}
+
+/* 대표 ALERT 행 강조 */
+.alert-orderbook-table tr.rep-row td {
+    background: #383838 !important;
+    font-weight: 600;
+}
+
+/* 클릭 가능한 ALERT ID */
+.clickable-alert {
+    cursor: pointer;
+    color: #4fc3f7 !important;
+    text-decoration: underline;
+    transition: color 0.2s ease;
+}
+
+.clickable-alert:hover {
+    color: #29b6f6 !important;
+}
+
+/* ALERT 상세 행 */
+.alert-detail-row td {
+    padding: 0 !important;
+    background: #0a0a0a !important;
+}
+
+.alert-detail-content {
+    padding: 20px;
+    animation: slideDown 0.3s ease;
+}
+
+/* 대표 ALERT ID 상세내역 섹션 */
+.alert-detail-section {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #0a0a0a;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+}
+
+.alert-detail-section h4 {
+    color: #4fc3f7;
+    margin-bottom: 15px;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+/* ALERT 상세 래퍼 */
+.alert-detail-wrapper {
+    padding: 15px;
+    background: #0a0a0a;
+    border-radius: 8px;
+}
+
+.alert-detail-wrapper h5 {
+    color: #bdbdbd;
+    font-size: 13px;
+    margin: 15px 0 8px 0;
+    font-weight: 600;
+}
+
+/* 종목별 상세 그리드 */
+.alert-detail-wrapper .ticker-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.alert-detail-wrapper .ticker-item {
+    padding: 8px;
+    background: #151515;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.alert-detail-wrapper .ticker-item strong {
+    color: #4fc3f7;
+    display: block;
+    margin-bottom: 5px;
+}
+
+/* 요약 정보 박스 */
+.alert-summary-box {
+    margin-bottom: 15px;
+    padding: 12px;
+    background: #1a1a1a;
+    border-radius: 6px;
+}
+
+.alert-summary-box .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+}
+
+.alert-summary-box .summary-item {
+    font-size: 12px;
+}
+
+.alert-summary-box .summary-item strong {
+    color: #9a9a9a;
+    margin-right: 5px;
+}
+
+.alert-summary-box .summary-value {
+    color: #eaeaea;
+    font-weight: 600;
+}
+
+/* 조회 기간 표시 */
+.query-period {
+    font-size: 11px;
+    color: #7a7a7a;
+    font-style: italic;
+}
+
+/* 특별 RULE ID 표시 (12개월 조회) */
+.special-rule-indicator {
+    display: inline-block;
+    padding: 2px 6px;
+    margin-left: 5px;
+    background: #4a2424;
+    color: #ff9800;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+/* 로딩 인디케이터 */
+.alert-loading {
+    text-align: center;
+    padding: 20px;
+    color: #9a9a9a;
+}
+
+.alert-loading::after {
+    content: '...';
+    animation: dots 1.5s infinite;
+}
+
+@keyframes dots {
+    0%, 20% { content: '.'; }
+    40% { content: '..'; }
+    60%, 100% { content: '...'; }
+}
+
+/* 애니메이션 */
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        max-height: 0;
+    }
+    to {
+        opacity: 1;
+        max-height: 1000px;
+    }
+}
+
+/* 반응형 처리 */
+@media (max-width: 1200px) {
+    .alert-summary-box .summary-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .alert-detail-wrapper .ticker-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .alert-orderbook-table {
+        font-size: 11px;
+    }
+    
+    .alert-orderbook-table th,
+    .alert-orderbook-table td {
+        padding: 8px 6px;
+    }
+    
+    .alert-summary-box .summary-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+    
+    .alert-detail-content {
+        padding: 12px;
+    }
+}

@@ -1,4 +1,4 @@
-# str_dashboard/db/oracle.py
+# str_dashboard/db_utils.py
 """
 Oracle 데이터베이스 연결 및 쿼리 실행 유틸리티
 """
@@ -89,10 +89,11 @@ class OracleConnection:
         cursor = None
         try:
             conn = self.connect()
+            # 성능 향상을 위한 prefetch 설정
             try:
                 conn.jconn.setDefaultRowPrefetch(prefetch)
             except Exception:
-                pass 
+                pass  # 지원하지 않는 경우 무시
             
             cursor = conn.cursor()
             yield cursor
@@ -105,14 +106,19 @@ class OracleConnection:
             self.close()
     
     def execute_query(self, sql: str, params: Optional[List] = None) -> Tuple[List[str], List[List]]:
-        """쿼리 실행 및 결과 반환"""
+        """
+        쿼리 실행 및 결과 반환
+        
+        Returns:
+            (columns, rows) 튜플
+        """
         params = params or []
         
         with self.get_cursor() as cursor:
             try:
                 cursor.execute(sql, params)
                 rows = cursor.fetchall()
-                cols = [d[0] for d in cursor.description] if curs.description else []
+                cols = [d[0] for d in cursor.description] if cursor.description else []
                 return cols, rows
             except Exception as e:
                 logger.exception(f"Query execution failed: {e}")
@@ -121,20 +127,23 @@ class OracleConnection:
     def test_connection(self) -> bool:
         """연결 테스트"""
         try:
-            self.connect().close()
+            conn = self.connect()
+            self.close()
             return True
         except Exception:
             return False
     
     @staticmethod
     def _parse_oracle_error(error_text: str) -> str:
-        """Oracle 에러 메시지 파싱"""
+        """Oracle 에러 메시지 파싱 및 사용자 친화적 메시지 변환"""
         if 'ORA-12514' in error_text:
             return '연결 실패: SERVICE_NAME을 확인하세요. (ORA-12514)'
         elif 'ORA-12154' in error_text:
             return '연결 실패: 호스트/포트/서비스명을 확인하세요. (ORA-12154)'
         elif 'ORA-01017' in error_text:
             return '연결 실패: 사용자명 또는 비밀번호가 올바르지 않습니다. (ORA-01017)'
+        elif 'ORA-28000' in error_text:
+            return '연결 실패: 계정이 잠겼습니다. (ORA-28000)'
         return f'연결 실패: {error_text}'
 
 
@@ -151,59 +160,142 @@ class SQLQueryManager:
             return sql_path.read_text(encoding='utf-8')
         except FileNotFoundError:
             raise FileNotFoundError(f"SQL 파일을 찾을 수 없습니다: {filename}")
+        except Exception as e:
+            raise Exception(f"SQL 파일 로드 실패: {e}")
     
     @staticmethod
-    def prepare_sql(sql: str, params_dict: Optional[Dict[str, Any]] = None) -> Tuple[str, List[Any]]:
+    def strip_comments(sql: str) -> str:
+        """SQL 주석 제거"""
+        # 블록 주석 제거
+        sql = re.sub(r"/\*.*?\*/", "", sql, flags=re.S)
+        # 라인 주석 제거
+        sql = re.sub(r"--.*?$", "", sql, flags=re.M)
+        return sql.strip()
+    
+    # str_dashboard/db_utils.py - prepare_sql 메서드만 수정
+
+    @staticmethod
+    def prepare_sql(sql: str, bind_params: Optional[Dict[str, str]] = None) -> Tuple[str, int]:
         """
         SQL 준비 (주석 제거, 바인드 변수 처리)
-        - :key 형태의 명명된 파라미터를 '?' 플레이스홀더로 변환하고, 순서에 맞는 파라미터 리스트를 반환
+        
+        Args:
+            sql: 원본 SQL
+            bind_params: 바인드 변수 매핑 (예: {':alert_id': '?'})
+        
+        Returns:
+            (prepared_sql, param_count) 튜플
         """
         # 주석 제거
-        sql = re.sub(r"/\*.*?\*/", "", sql, flags=re.S)
-        sql = re.sub(r"--.*?$", "", sql, flags=re.M)
-        sql = sql.strip()
-
-        if not params_dict:
-            return sql, []
-
-        # SQL에 나타나는 순서대로 바인드 변수 찾기
-        bind_vars = re.findall(r":(\w+)", sql)
+        sql = SQLQueryManager.strip_comments(sql)
         
-        # 순서에 맞게 파라미터 리스트 생성
-        ordered_params = [params_dict[f":{var}"] for var in bind_vars if f":{var}" in params_dict]
+        # 바인드 변수 처리
+        param_count = 0
+        if bind_params:
+            # 각 바인드 변수의 사용 횟수를 계산
+            for bind_var, placeholder in bind_params.items():
+                # 바인드 변수가 SQL에서 몇 번 사용되는지 계산
+                count = sql.count(bind_var)
+                # 치환
+                sql = sql.replace(bind_var, placeholder)
+                # 총 파라미터 개수 누적
+                param_count += count
+                logger.debug(f"Bind variable {bind_var}: replaced {count} times")
+        else:
+            # bind_params가 없으면 기존 ? 개수 카운트
+            param_count = sql.count("?")
+        
+        # 마지막 세미콜론 제거
+        if sql.rstrip().endswith(";"):
+            sql = sql.rstrip()[:-1]
+        
+        logger.debug(f"Prepared SQL - total parameter count: {param_count}")
+        
+        return sql, param_count
 
-        # SQL의 바인드 변수를 '?'로 치환
-        prepared_sql = re.sub(r":(\w+)", "?", sql)
-
-        if prepared_sql.rstrip().endswith(";"):
-            prepared_sql = prepared_sql.rstrip()[:-1]
-
-        return prepared_sql, ordered_params
-
+    
     @classmethod
-    def load_and_prepare(cls, filename: str, params_dict: Optional[Dict[str, Any]] = None) -> Tuple[str, List[Any]]:
+    def load_and_prepare(cls, filename: str, bind_params: Optional[Dict[str, str]] = None) -> Tuple[str, int]:
         """SQL 파일 로드 및 준비"""
         raw_sql = cls.load_sql(filename)
-        return cls.prepare_sql(raw_sql, params_dict)
+        return cls.prepare_sql(raw_sql, bind_params)
 
 
 def require_db_connection(func):
-    """DB 연결 확인 데코레이터"""
+    """
+    데이터베이스 연결이 필요한 뷰 데코레이터
+    세션에서 연결 정보를 확인하고 OracleConnection 객체를 생성하여 전달
+    """
     @wraps(func)
     def wrapper(request, *args, **kwargs):
-        if request.session.get('db_conn_status') != 'ok':
+        db_info = request.session.get('db_conn')
+        if not db_info or request.session.get('db_conn_status') != 'ok':
             return JsonResponse({
                 'success': False,
-                'message': '먼저 Oracle DB 연결을 완료해 주세요.'
+                'message': '먼저 DB Connection에서 연결을 완료해 주세요.'
             })
+        
         try:
-            db_info = request.session.get('db_conn')
             oracle_conn = OracleConnection.from_session(db_info)
+            # 함수에 oracle_conn 파라미터 추가
             return func(request, oracle_conn=oracle_conn, *args, **kwargs)
         except Exception as e:
             logger.exception(f"DB connection setup failed: {e}")
             return JsonResponse({
                 'success': False,
-                'message': f'DB 연결 설정 실패: {e}'
+                'message': f'데이터베이스 연결 설정 실패: {e}'
             })
+    
     return wrapper
+
+
+def execute_query_with_error_handling(
+    oracle_conn: OracleConnection,
+    sql_filename: str,
+    bind_params: Optional[Dict[str, str]] = None,
+    query_params: Optional[List] = None
+) -> Dict[str, Any]:
+    """
+    쿼리 실행 및 에러 처리를 포함한 헬퍼 함수
+    
+    Returns:
+        {'success': True/False, 'columns': [...], 'rows': [...], 'message': '...'}
+    """
+    try:
+        # SQL 로드 및 준비
+        prepared_sql, param_count = SQLQueryManager.load_and_prepare(sql_filename, bind_params)
+        
+        # 디버깅 로그 추가
+        logger.debug(f"SQL File: {sql_filename}")
+        logger.debug(f"Expected params: {param_count}, Provided params: {len(query_params) if query_params else 0}")
+        
+        # 파라미터 검증
+        if param_count > 0 and not query_params:
+            return {
+                'success': False,
+                'message': f'쿼리에 {param_count}개의 파라미터가 필요하지만 제공되지 않았습니다.'
+            }
+        
+        # 파라미터 개수 불일치 검증
+        if param_count != (len(query_params) if query_params else 0):
+            return {
+                'success': False,
+                'message': f'파라미터 개수 불일치: 필요 {param_count}개, 제공 {len(query_params) if query_params else 0}개'
+            }
+        
+        # 쿼리 실행
+        cols, rows = oracle_conn.execute_query(prepared_sql, query_params)
+        
+        return {
+            'success': True,
+            'columns': cols,
+            'rows': rows
+        }
+    
+    except FileNotFoundError as e:
+        return {'success': False, 'message': str(e)}
+    except OracleQueryError as e:
+        return {'success': False, 'message': str(e)}
+    except Exception as e:
+        logger.exception(f"Unexpected error in query execution: {e}")
+        return {'success': False, 'message': f'예상치 못한 오류: {e}'}

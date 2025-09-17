@@ -1,0 +1,522 @@
+/* str_dashboard/static/str_dashboard/css/table.component.css */
+
+/* ==================== 공통 테이블 스타일 ==================== */
+.table-wrap {
+    margin-top: 6px;
+    overflow-x: auto;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #1a1a1a;
+}
+
+.table th,
+.table td {
+    border-bottom: 1px solid #2a2a2a;
+    padding: 10px 12px;
+    text-align: left;
+    color: #eaeaea;
+}
+
+.table th {
+    background: #111;
+    color: #bdbdbd;
+    font-weight: 700;
+}
+
+.table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Hover 효과 */
+.table tbody tr:hover td,
+.table tbody tr.hover td {
+    background: #181818;
+    transition: background 0.15s ease;
+}
+
+/* 빈 상태 */
+.empty-row {
+    color: #bdbdbd;
+    padding: 16px 12px;
+    text-align: center;
+}
+
+/* ==================== 하이라이트 스타일 ==================== */
+/* 대표 Row 강조 */
+.table tr.rep-row td,
+.table tr.highlighted td {
+    background: #383838 !important;
+    font-weight: 600;
+}
+
+.table tr.rep-row:hover td,
+.table tr.highlighted:hover td {
+    background: #424242 !important;
+}
+
+/* ==================== Key-Value 테이블 스타일 ==================== */
+.table-kv th {
+    width: 220px;
+    background: #111;
+    color: #bdbdbd;
+    font-weight: 700;
+}
+
+.table-kv td {
+    background: #1a1a1a;
+}
+
+.table-kv tr:hover td {
+    background: #181818;
+}
+
+/* ==================== 2열 Key-Value 테이블 스타일 ==================== */
+.table-kv-2col {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #1a1a1a;
+}
+
+.table-kv-2col th {
+    width: 150px;
+    background: #111;
+    color: #bdbdbd;
+    font-weight: 700;
+    white-space: nowrap;
+    border-bottom: 1px solid #2a2a2a;
+    border-right: 1px solid #2a2a2a;
+    padding: 10px 12px;
+    text-align: left;
+}
+
+.table-kv-2col td {
+    background: #1a1a1a;
+    min-width: 200px;
+    border-bottom: 1px solid #2a2a2a;
+    border-right: 1px solid #2a2a2a;
+    padding: 10px 12px;
+    color: #eaeaea;
+}
+
+.table-kv-2col td:last-child {
+    border-right: none;
+}
+
+.table-kv-2col tr:last-child th,
+.table-kv-2col tr:last-child td {
+    border-bottom: none;
+}
+
+.table-kv-2col tr:hover td {
+    background: #181818;
+}
+
+/* ==================== 섹션 토글 (접기/펼치기) ==================== */
+.section {
+    margin-bottom: 20px; /* 섹션 간 여백 */
+}
+
+.section h3 {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    padding-right: 30px;
+    transition: all 0.2s ease;
+    display: inline-block;
+    padding: 8px 12px;
+    padding-right: 35px;
+    border-radius: 8px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    margin: 0 0 10px 0;
+    font-size: 16px;
+    font-weight: 800;
+    color: #eaeaea;
+}
+
+.section h3:hover {
+    background: #222;
+    transform: translateX(2px);
+}
+
+/* 섹션 토글 (접기/펼치기) 부분 수정 */
+.section h3::after {
+    content: '';
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 8px solid #bdbdbd;
+    transition: transform 0.3s ease;
+}
+
+.section.collapsed h3::after {
+    transform: translateY(-50%) rotate(-90deg);
+}
+
+.section.collapsed .table-wrap {
+    display: none;
+}
+
+/* 애니메이션 */
+.section .table-wrap {
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        max-height: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        max-height: 2000px;
+        transform: translateY(0);
+    }
+}
+
+/* ==================== 섹션별 커스터마이징 ==================== */
+
+/* 고객 정보 테이블 */
+.person-info-table th {
+    width: 180px;
+    white-space: nowrap;
+}
+
+.person-info-table td {
+    word-break: break-word;
+}
+
+/* Rule 히스토리 테이블 */
+.rule-history-table {
+    font-size: 13px;
+}
+
+.rule-history-table td {
+    vertical-align: top;
+}
+
+/* Alert 히스토리 테이블 */
+.alert-history-table {
+    font-size: 13px;
+}
+
+.alert-history-table th:first-child,
+.alert-history-table td:first-child {
+    white-space: nowrap;
+}
+
+/* 객관식 정보 테이블 */
+.objectives-table .objective-cell {
+    white-space: pre-line;
+    line-height: 1.5;
+}
+
+.objectives-table td:last-child {
+    max-width: 400px;
+}
+
+/* Rule 설명 테이블 */
+.rule-desc-table td {
+    vertical-align: top;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.rule-desc-table td:first-child {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* Rule 설명 테이블 */
+.rule-desc-table td {
+    vertical-align: top;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.rule-desc-table td:first-child {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* IP 조회내역 테이블 */
+.ip-history-table {
+    font-size: 13px;
+}
+
+.ip-history-table th {
+    white-space: nowrap;
+    font-size: 12px;
+}
+
+.ip-history-table td {
+    word-break: break-word;
+    vertical-align: top;
+}
+
+
+/* ==================== 동일_차명의심_상세 정보 테이블 스타일 ==================== */
+.duplicate-persons-table {
+    font-size: 13px;
+}
+
+.duplicate-persons-table th {
+    white-space: nowrap;
+    font-size: 12px;
+}
+
+.duplicate-persons-table td {
+    word-break: break-word;
+    vertical-align: top;
+}
+
+/* 매칭된 컬럼 강조 효과 */
+.duplicate-persons-table td.matched-column {
+    background: #383838 !important;
+    font-weight: 600;
+    position: relative;
+}
+
+.duplicate-persons-table tr:hover td.matched-column {
+    background: #424242 !important;
+}
+
+/* ==================== 법인 관련인 정보 테이블 스타일 ==================== */
+.corp-related-table {
+    font-size: 13px;
+}
+
+.corp-related-table th {
+    white-space: nowrap;
+    font-size: 12px;
+}
+
+.corp-related-table td {
+    word-break: break-word;
+    vertical-align: top;
+}
+
+/* 빈 테이블 메시지 개선 */
+.duplicate-persons-table .empty-row,
+.corp-related-table .empty-row {
+    padding: 24px;
+    text-align: center;
+    color: #888;
+    font-style: italic;
+}
+
+/* ==================== 정렬 가능 컬럼 ==================== */
+.table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    padding-right: 24px;
+}
+
+.table th.sortable:hover {
+    background: #151515;
+}
+
+.table th.sortable::after {
+    content: '⇅';
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0.3;
+    font-size: 12px;
+}
+
+.table th.sortable.sort-asc::after {
+    content: '↑';
+    opacity: 1;
+    color: #4fc3f7;
+}
+
+.table th.sortable.sort-desc::after {
+    content: '↓';
+    opacity: 1;
+    color: #4fc3f7;
+}
+
+/* ==================== 매칭 정보 표시 ==================== */
+.match-info-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    margin-left: 4px;
+    background: #4fc3f7;
+    color: #000;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+/* ==================== 동일_차명의심_상세 정보 스타일 ==================== */
+.duplicate-person-group {
+    margin-bottom: 20px;
+}
+
+.duplicate-person-header {
+    background: #222;
+    padding: 10px;
+    margin: 10px 0 5px 0;
+    border-radius: 8px;
+    font-weight: 600;
+    color: #eaeaea;
+}
+
+.duplicate-person-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.duplicate-field {
+    display: flex;
+    border-right: 1px solid #2a2a2a;
+    border-bottom: 1px solid #2a2a2a;
+}
+
+.duplicate-field:nth-child(4n) {
+    border-right: none;
+}
+
+.duplicate-field:nth-last-child(-n+4) {
+    border-bottom: none;
+}
+
+.duplicate-field-label {
+    background: #151515;
+    padding: 8px 10px;
+    min-width: 100px;
+    font-size: 12px;
+    color: #9a9a9a;
+    font-weight: 600;
+    border-right: 1px solid #2a2a2a;
+}
+
+.duplicate-field-value {
+    padding: 8px 10px;
+    flex: 1;
+    font-size: 13px;
+    color: #eaeaea;
+    background: #1a1a1a;
+}
+
+/* 매칭된 필드 강조 (회색 계열만 사용) */
+.duplicate-field.matched .duplicate-field-value {
+    background: #2a2a2a;
+    font-weight: 600;
+}
+
+.duplicate-field.matched:hover .duplicate-field-value {
+    background: #333;
+}
+
+/* 동일_차명의심 반응형 처리 */
+@media (max-width: 1400px) {
+    .duplicate-person-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    
+    .duplicate-field:nth-child(4n) {
+        border-right: 1px solid #2a2a2a;
+    }
+    
+    .duplicate-field:nth-child(3n) {
+        border-right: none;
+    }
+}
+
+@media (max-width: 1024px) {
+    .duplicate-person-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .duplicate-field:nth-child(3n),
+    .duplicate-field:nth-child(4n) {
+        border-right: 1px solid #2a2a2a;
+    }
+    
+    .duplicate-field:nth-child(2n) {
+        border-right: none;
+    }
+}
+
+
+
+/* ==================== 반응형 처리 ==================== */
+@media (max-width: 768px) {
+    .table {
+        font-size: 12px;
+    }
+    
+    .table th,
+    .table td {
+        padding: 8px;
+    }
+    
+    .table-kv th {
+        width: 120px;
+    }
+    
+    .table-kv-2col th {
+        width: 100px;
+    }
+    
+    /* 모바일에서 스크롤 가능하도록 */
+    .table-wrap {
+        max-width: 100vw;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+}
+
+/* ==================== 인쇄 스타일 ==================== */
+@media print {
+    .table {
+        border: 1px solid #000;
+        background: white;
+    }
+    
+    .table th,
+    .table td {
+        border: 1px solid #000;
+        color: #000;
+        background: white;
+    }
+    
+    .table th {
+        background: #f0f0f0;
+        font-weight: bold;
+    }
+    
+    .table tr.rep-row td,
+    .table tr.highlighted td {
+        background: #e0e0e0 !important;
+    }
+    
+    .section h3::after {
+        display: none;
+    }
+}
+

@@ -1,0 +1,233 @@
+/* str_dashboard/static/str_dashboard/css/menu1_1.css */
+
+/* 상단 컨트롤 영역 */
+.top-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+/* 버튼 스타일 */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: #0f0f0f;
+    border: 1px solid #2a2a2a;
+    color: #eaeaea;
+    cursor: pointer;
+    font-weight: 700;
+    transition: background 0.15s ease;
+}
+
+.btn:hover {
+    background: #151515;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    background: #0e0e0e;
+}
+
+.btn-primary {
+    background: #1a1a1a;
+    border-color: #2a2a2a;
+    color: #4fc3f7;
+}
+
+.btn-primary:hover {
+    background: #222;
+}
+
+/* 배지 스타일 */
+.badge {
+    display: inline-flex;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    border: 1px solid #2a2a2a;
+    background: #101010;
+    color: #bdbdbd;
+}
+
+.badge.ok {
+    background: #0f2314;
+    color: #4caf50;
+    border-color: #214a2c;
+}
+
+/* 쿼리 입력 영역 */
+.query-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+
+.label-chip {
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    color: #eaeaea;
+    font-weight: 700;
+}
+
+.form-input {
+    min-width: 220px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #333;
+    background: #0e0e0e;
+    color: #eaeaea;
+    outline: none;
+    flex: 1 1 280px;
+}
+
+.form-input:focus {
+    border-color: #4fc3f7;
+}
+
+/* 섹션 스타일 */
+.section {
+    margin-top: 18px;
+    animation: fadeIn 0.3s ease;
+}
+
+.section h3 {
+    margin: 0 0 10px 0;
+    font-size: 16px;
+    font-weight: 800;
+    color: #eaeaea;
+    display: inline-block;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+}
+
+/* 모달 스타일 */
+.modal-backdrop {
+    
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 3000;
+    animation: fadeIn 0.2s ease;
+}
+
+.modal-backdrop.show {
+    display: flex;
+}
+
+.modal {
+    width: 100%;
+    max-width: 560px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+    padding: 18px;
+    animation: slideUp 0.3s ease;
+}
+
+.modal h3 {
+    margin: 0 0 12px 0;
+    color: #eaeaea;
+}
+
+.modal .grid {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 10px 12px;
+}
+
+.modal .grid label {
+    color: #bdbdbd;
+    font-size: 13px;
+    align-self: center;
+}
+
+.modal .grid input {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #333;
+    background: #0e0e0e;
+    color: #eaeaea;
+    outline: none;
+}
+
+.modal .grid input:focus {
+    border-color: #4fc3f7;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+/* 로딩 상태 */
+.loading {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #2a2a2a;
+    border-top-color: #4fc3f7;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+/* 애니메이션 */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* 에러 메시지 */
+.error-message {
+    padding: 10px 14px;
+    background: #2a1414;
+    border: 1px solid #4a2424;
+    border-radius: 8px;
+    color: #ff6b6b;
+    margin-top: 10px;
+}
+
+/* 성공 메시지 */
+.success-message {
+    padding: 10px 14px;
+    background: #142a14;
+    border: 1px solid #244a24;
+    border-radius: 8px;
+    color: #6bff6b;
+    margin-top: 10px;
+}
