@@ -1,0 +1,71 @@
+/* str_dashboard/static/str_dashboard/css/pages/menu1_1.css */
+
+/* ==================== 동일_차명의심_상세 정보 ==================== */
+.duplicate-person-group { margin-bottom: 20px; }
+.duplicate-person-header { background: #222; padding: 10px; margin-bottom: 5px; border-radius: 8px; font-weight: 600; }
+.duplicate-person-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    background: var(--bg-dark);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.duplicate-field { display: flex; border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); }
+.duplicate-field:nth-child(4n) { border-right: none; }
+.duplicate-field .duplicate-field-label { background: #151515; padding: 8px 10px; min-width: 100px; font-size: 12px; color: var(--text-dim); border-right: 1px solid var(--border-color); }
+.duplicate-field .duplicate-field-value { padding: 8px 10px; flex: 1; }
+.duplicate-field.matched .duplicate-field-value { background: #2a2a2a; font-weight: 600; }
+
+/* ==================== 개인 관련인 정보 ==================== */
+.related-person-header { background: #222; padding: 10px; margin: 10px 0 5px 0; border-radius: 8px; font-weight: 600; }
+.person-related-table.transaction-table { margin-top: 15px; } /* 개인 관련인 정보 내 거래 테이블 */
+
+/* ==================== Orderbook 패턴 요약 ==================== */
+.orderbook-patterns-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+}
+.pattern-stat-card {
+    padding: 10px; background: var(--bg-dark); border: 1px solid var(--border-color);
+    border-radius: 8px; cursor: pointer; transition: background 0.2s ease;
+}
+.pattern-stat-card:hover, .pattern-stat-card.expanded { background: #222; }
+.pattern-stat-label { color: var(--text-dim); font-size: 12px; margin-bottom: 4px; }
+.pattern-stat-value { font-size: 16px; font-weight: 700; }
+.pattern-stat-value .actual-amount { display: block; font-size: 11px; font-weight: 400; color: #7a7a7a; }
+.pattern-stat-count { font-size: 13px; color: var(--text-dim); }
+.pattern-detail { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-color); font-size: 11px; max-height: 300px; overflow-y: auto; display: none; }
+.pattern-detail.show { display: block; }
+.pattern-detail-item { margin-bottom: 5px; }
+.pattern-detail-ticker { font-weight: 600; color: var(--text-dim); }
+.pattern-detail-more { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-color); font-style: italic; color: #6a6a6a; }
+
+
+/* ==================== ALERT 상세 내역 (펼쳤을 때) ==================== */
+.alert-detail-wrapper { padding: 15px; background: #0a0a0a; border-radius: 8px; }
+.alert-summary-box { padding: 12px; background: #1a1a1a; border-radius: 6px; margin-bottom: 15px; }
+.alert-summary-box .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
+.alert-detail-wrapper .ticker-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.alert-detail-wrapper .ticker-item { padding: 8px; background: #151515; border-radius: 4px; }
+
+/* ==================== TOML 저장 버튼 ==================== */
+.toml-save-btn { background: #1a3a1a; border: 1px solid #2a5a2a; color: var(--success); }
+.toml-save-btn:hover { background: #245024; border-color: #3a6a3a; }
+.toml-save-btn .icon { width: 16px; height: 16px; }
+
+/* ==================== 반응형 ==================== */
+@media (max-width: 1400px) {
+    .duplicate-person-grid { grid-template-columns: repeat(3, 1fr); }
+    .duplicate-field:nth-child(4n) { border-right: 1px solid var(--border-color); }
+    .duplicate-field:nth-child(3n) { border-right: none; }
+}
+@media (max-width: 1024px) {
+    .duplicate-person-grid { grid-template-columns: repeat(2, 1fr); }
+    .duplicate-field:nth-child(n) { border-right: 1px solid var(--border-color); }
+    .duplicate-field:nth-child(2n) { border-right: none; }
+}
+@media (max-width: 768px) {
+    .orderbook-patterns-grid, .alert-summary-box .summary-grid { grid-template-columns: 1fr; }
+}
