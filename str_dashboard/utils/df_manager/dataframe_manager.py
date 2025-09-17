@@ -1,4 +1,4 @@
-# str_dashboard/dataframe_manager.py
+# str_dashboard/utils/df_manager/dataframe_manager.py
 """
 DataFrame 기반 통합 데이터 관리 모듈
 모든 쿼리 결과를 DataFrame으로 저장하고 중앙에서 관리

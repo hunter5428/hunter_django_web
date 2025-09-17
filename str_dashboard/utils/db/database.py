@@ -1,4 +1,4 @@
-# str_dashboard/database.py
+# str_dashboard/utils/db/database.py
 """
 데이터베이스 연결 및 쿼리 실행 통합 모듈
 Oracle (jaydebeapi) + Redshift (psycopg2)
@@ -18,6 +18,25 @@ from django.conf import settings
 from django.http import JsonResponse
 
 logger = logging.getLogger(__name__)
+
+
+# ==================== 기본 연결 설정 ====================
+DEFAULT_CONFIG = {
+    'ORACLE': {
+        'HOST': '127.0.0.1',
+        'PORT': '40112',
+        'SERVICE': 'PRDAMLKR.OCIAML.PRODDBA.OCIAMLPROD.ORACLEVCN.COM',
+        'USERNAME': '',
+        'PASSWORD': ''
+    },
+    'REDSHIFT': {
+        'HOST': '127.0.0.1',
+        'PORT': '40127',
+        'DBNAME': 'prod',
+        'USERNAME': '',
+        'PASSWORD': ''
+    }
+}
 
 
 # ==================== 예외 클래스 ====================
@@ -121,7 +140,18 @@ class RedshiftConnection:
     """Redshift 데이터베이스 연결 관리 클래스 (읽기 전용)"""
     
     def __init__(self, **kwargs):
-        self.conn_params = kwargs
+        # 기본값 설정
+        self.conn_params = {
+            'host': kwargs.get('host', DEFAULT_CONFIG['REDSHIFT']['HOST']),
+            'port': kwargs.get('port', DEFAULT_CONFIG['REDSHIFT']['PORT']),
+            'dbname': kwargs.get('dbname', DEFAULT_CONFIG['REDSHIFT']['DBNAME']),
+            'user': kwargs.get('username', kwargs.get('user', '')),  # username 또는 user 둘 다 지원
+            'password': kwargs.get('password', '')
+        }
+        
+        # psycopg2는 'user' 파라미터를 사용하므로 변환
+        if 'username' in self.conn_params:
+            del self.conn_params['username']
     
     @classmethod
     def from_session(cls, session_data: Dict[str, Any]) -> 'RedshiftConnection':
@@ -133,13 +163,19 @@ class RedshiftConnection:
         """하나의 요청 내에서 커넥션을 유지하고 재사용하기 위한 컨텍스트 매니저"""
         conn = None
         try:
+            # Redshift 연결 (localhost 연결은 sslmode를 'prefer'로 설정)
+            if self.conn_params['host'] in ['127.0.0.1', 'localhost']:
+                sslmode = 'prefer'
+            else:
+                sslmode = 'require'
+            
             conn = psycopg2.connect(
                 **self.conn_params,
-                sslmode='require',
+                sslmode=sslmode,
                 connect_timeout=10
             )
             conn.set_session(readonly=True, autocommit=True)
-            logger.debug("Redshift connection opened for a transaction.")
+            logger.debug(f"Redshift connection opened for a transaction to {self.conn_params['host']}:{self.conn_params['port']}")
             yield conn
         except psycopg2.OperationalError as e:
             error_msg = self._parse_redshift_error(str(e))
@@ -166,6 +202,9 @@ class RedshiftConnection:
                     return result[0] == 1
         except RedshiftConnectionError:
             return False
+        except Exception as e:
+            logger.error(f"Redshift test connection error: {e}")
+            return False
     
     @staticmethod
     def _parse_redshift_error(error_text: str) -> str:
@@ -173,10 +212,14 @@ class RedshiftConnection:
         error_lower = error_text.lower()
         if 'could not connect to server' in error_lower:
             return '연결 실패: 서버에 연결할 수 없습니다. 호스트와 포트를 확인하세요.'
-        elif 'authentication failed' in error_lower:
+        elif 'authentication failed' in error_lower or 'password authentication failed' in error_lower:
             return '연결 실패: 사용자명 또는 비밀번호가 올바르지 않습니다.'
         elif 'database' in error_lower and 'does not exist' in error_lower:
             return '연결 실패: 데이터베이스가 존재하지 않습니다.'
+        elif 'timeout expired' in error_lower:
+            return '연결 실패: 연결 시간이 초과되었습니다. 호스트와 포트를 확인하세요.'
+        elif 'connection refused' in error_lower:
+            return '연결 실패: 연결이 거부되었습니다. 서버가 실행 중인지 확인하세요.'
         return f'연결 실패: {error_text.splitlines()[0]}'
 
 
@@ -240,3 +283,9 @@ def execute_oracle_query(
     except Exception as e:
         logger.exception(f"Oracle 쿼리 실행 중 예외 발생 ({sql_filename}): {e}")
         raise OracleQueryError(f"{sql_filename} 쿼리 실행 실패") from e
+
+
+# 기본값을 외부에서 접근 가능하게 export
+def get_default_config():
+    """기본 설정값 반환"""
+    return DEFAULT_CONFIG

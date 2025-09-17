@@ -10,7 +10,7 @@ import pandas as pd  # <--- 수정된 부분: pandas import 추가
 
 from .toml_config import toml_config
 from .toml_processor import toml_processor
-from ..dataframe_manager import DataFrameManager
+from ..utils.df_manager import DataFrameManager
 
 logger = logging.getLogger(__name__)
 
