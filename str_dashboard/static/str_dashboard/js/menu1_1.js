@@ -247,7 +247,7 @@
             return { repRuleId, custIdForPerson, canonicalIds };
         }
 
-        static extractTransactionPeriod(cols, rows) {
+        static extractTransactionPeriod(cols, rows, kycDatetime = null) {
             const idxTranStart = cols.indexOf('TRAN_STRT');
             const idxTranEnd = cols.indexOf('TRAN_END');
             const idxRuleId = cols.indexOf('STR_RULE_ID');
@@ -264,43 +264,102 @@
             if (idxRuleId >= 0) {
                 rows.forEach(row => {
                     const ruleId = row[idxRuleId];
-                    if (ruleId === 'IO000' || ruleId === 'IO111') {
-                        hasSpecialRule = true;
+                    if (ruleId) {
+                        // RuleUtils를 사용하여 동적으로 특별 규칙 확인
+                        if (window.RuleUtils && typeof window.RuleUtils.getDayCountForRule === 'function') {
+                            const ruleInfo = window.RuleUtils.getDayCountForRule(ruleId);
+                            if (ruleInfo.isSpecial) {
+                                hasSpecialRule = true;
+                            }
+                        } else {
+                            // RuleUtils가 로드되지 않은 경우 기존 방식으로 체크
+                            if (ruleId === 'IO000' || ruleId === 'IO111') {
+                                hasSpecialRule = true;
+                            }
+                        }
                     }
                 });
             }
+            
+            // 1. 먼저 원본 TRAN_STRT/TRAN_END의 MIN/MAX 값을 추출
+            let originalMinStart = null;
+            let originalMaxEnd = null;
             
             rows.forEach(row => {
                 const startDate = row[idxTranStart];
                 const endDate = row[idxTranEnd];
                 
                 if (startDate && /^\d{4}-\d{2}-\d{2}/.test(startDate)) {
-                    if (!minStart || startDate < minStart) {
-                        minStart = startDate;
+                    if (!originalMinStart || startDate < originalMinStart) {
+                        originalMinStart = startDate;
                     }
                 }
                 
                 if (endDate && /^\d{4}-\d{2}-\d{2}/.test(endDate)) {
-                    if (!maxEnd || endDate > maxEnd) {
-                        maxEnd = endDate;
+                    if (!originalMaxEnd || endDate > originalMaxEnd) {
+                        originalMaxEnd = endDate;
                     }
                 }
             });
             
-            // 특정 RULE ID가 있으면 12개월, 없으면 3개월 이전
+            // 2. 특정 RULE ID가 있으면 12개월, 없으면 3개월 이전
             const monthsBack = hasSpecialRule ? 12 : 3;
             
-            if (minStart) {
-                const startDateObj = new Date(minStart);
-                startDateObj.setMonth(startDateObj.getMonth() - monthsBack);
-                minStart = startDateObj.toISOString().split('T')[0] + ' 00:00:00.000000000';
+            // 3. monthsBack 기반으로 가장 넓은 범위의 시작일 계산
+            let calculatedStart = null;
+            
+            if (originalMaxEnd) {
+                // MAX(TRAN_END)로부터 몇 개월 이전 날짜
+                const endDateObj = new Date(originalMaxEnd.split(' ')[0]);
+                calculatedStart = new Date(endDateObj);
+                calculatedStart.setMonth(calculatedStart.getMonth() - monthsBack);
+                calculatedStart = calculatedStart.toISOString().split('T')[0];
             }
             
-            if (maxEnd) {
-                maxEnd = maxEnd.includes(' ') ? maxEnd : maxEnd + ' 23:59:59.999999999';
+            // 4. 최종 쿼리용 날짜 결정: 
+            // - 시작일: MIN(TRAN_STRT)와 계산된 이전 날짜 중 더 빠른 날짜
+            // - 종료일: MAX(TRAN_END)
+            let finalStartDate = null;
+            if (originalMinStart && calculatedStart) {
+                const minStartDate = originalMinStart.split(' ')[0];
+                finalStartDate = minStartDate < calculatedStart ? minStartDate : calculatedStart;
+            } else if (originalMinStart) {
+                finalStartDate = originalMinStart.split(' ')[0];
+            } else if (calculatedStart) {
+                finalStartDate = calculatedStart;
             }
             
-            return { start: minStart, end: maxEnd, monthsBack };
+            // KYC 완료시점 처리
+            let kycDate = null;
+            let useKycDate = false;
+            
+            if (kycDatetime && kycDatetime.trim() !== '') {
+                // KYC 완료시점 추출 (YYYY-MM-DD HH24:MI:SS 형식)
+                kycDate = kycDatetime.split(' ')[0]; // 날짜 부분만 추출
+                
+                // 최종 시작일보다 KYC 완료시점이 더 최근인 경우, KYC 완료시점을 사용
+                if (finalStartDate && kycDate > finalStartDate) {
+                    finalStartDate = kycDate;
+                    useKycDate = true;
+                }
+            }
+            
+            const finalEndDate = originalMaxEnd ? originalMaxEnd.split(' ')[0] : null;
+            
+            // 5. 시간 정보 추가
+            minStart = finalStartDate ? finalStartDate + ' 00:00:00.000000000' : null;
+            maxEnd = finalEndDate ? finalEndDate + ' 23:59:59.999999999' : null;
+            
+            return { 
+                start: minStart, 
+                end: maxEnd, 
+                monthsBack,
+                original_min_start: originalMinStart ? originalMinStart.split(' ')[0] : null,
+                original_max_end: originalMaxEnd ? originalMaxEnd.split(' ')[0] : null,
+                kyc_date: kycDate,
+                used_kyc_date: useKycDate,
+                has_special_rule: hasSpecialRule  // 특정 RULE ID 정보 추가
+            };
         }
     }
 
@@ -435,15 +494,22 @@
                 });
                 
                 if (data.success) {
+                    const columns = data.columns || [];
+                    const rows = data.rows || [];
+                    
+                    // KYC 완료시점 추출
+                    const kycDatetime = this.extractKYCDatetime(columns, rows);
+                    
                     // 세션에 저장 (TOML 저장용) - 서버로 전송
                     this.saveToSession('current_customer_data', {
-                        columns: data.columns || [],
-                        rows: data.rows || [],
-                        customer_type: data.customer_type || null
+                        columns: columns,
+                        rows: rows,
+                        customer_type: data.customer_type || null,
+                        kyc_datetime: kycDatetime
                     });
                     
                     // 고객 정보 렌더링
-                    window.TableRenderer.renderCustomerUnified(data.columns || [], data.rows || []);
+                    window.TableRenderer.renderCustomerUnified(columns, rows);
                     
                     // 고객 유형별 추가 조회
                     const customerType = data.customer_type;
@@ -454,7 +520,8 @@
                     } else if (customerType === '개인') {
                         const tranPeriod = DataProcessor.extractTransactionPeriod(
                             this.state.alertData.cols, 
-                            this.state.alertData.rows
+                            this.state.alertData.rows,
+                            kycDatetime
                         );
                         if (tranPeriod.start && tranPeriod.end) {
                             subPromises.push(this.fetchPersonRelated(custId, tranPeriod));
@@ -462,16 +529,17 @@
                     }
                     
                     // 중복 회원 검색
-                    if (data.rows && data.rows.length > 0) {
-                        subPromises.push(this.fetchDuplicatePersons(custId, data.columns, data.rows[0], customerType));
+                    if (rows.length > 0) {
+                        subPromises.push(this.fetchDuplicatePersons(custId, columns, rows[0], customerType));
                     }
                     
                     // IP 접속 이력 및 Orderbook
-                    const memId = this.extractMID(data.columns, data.rows);
+                    const memId = this.extractMID(columns, rows);
                     if (memId) {
                         const tranPeriod = DataProcessor.extractTransactionPeriod(
                             this.state.alertData.cols, 
-                            this.state.alertData.rows
+                            this.state.alertData.rows,
+                            kycDatetime
                         );
                         if (tranPeriod.start && tranPeriod.end) {
                             subPromises.push(this.fetchIPHistory(memId, tranPeriod));
@@ -505,6 +573,13 @@
             }).catch(error => {
                 console.error('Session save error:', error);
             });
+        }
+        
+        // KYC 완료시점을 추출하는 함수
+        extractKYCDatetime(columns, rows) {
+            if (!rows || rows.length === 0) return null;
+            const kycDatetimeIdx = columns.indexOf('KYC완료일시');
+            return kycDatetimeIdx >= 0 ? rows[0][kycDatetimeIdx] : null;
         }
 
 
@@ -618,8 +693,14 @@
                             cache_key: response.cache_key
                         });
                         
+                        // tranPeriod 정보를 alertData에 추가하여 전달
+                        const alertDataWithTranPeriod = {
+                            ...this.state.alertData,
+                            tranPeriod: tranPeriod
+                        };
+                        
                         // ALERT 데이터와 함께 전달
-                        window.TableRenderer.renderOrderbookAnalysis(analysis, this.state.alertData);
+                        window.TableRenderer.renderOrderbookAnalysis(analysis, alertDataWithTranPeriod);
                     }
                 }
             } catch (error) {

@@ -1253,11 +1253,15 @@ def analyze_alert_orderbook(request):
 @login_required
 @require_POST
 def analyze_stds_dtm_orderbook(request):
-    """대표 ALERT의 STDS_DTM 날짜에 대한 Orderbook 요약"""
+    """대표 ALERT의 거래 기간(TRAN_STRT ~ TRAN_END)에 대한 Orderbook 요약"""
+    # 단일 날짜 또는 기간 범위를 모두 지원
     stds_date = request.POST.get('stds_date', '').strip()
+    start_date = request.POST.get('start_date', '').strip()
+    end_date = request.POST.get('end_date', '').strip()
     cache_key = request.POST.get('cache_key', '').strip()
     
-    if not all([stds_date, cache_key]):
+    # 파라미터 검증: cache_key는 필수, 날짜는 단일 날짜 또는 기간 중 하나 필요
+    if not cache_key or (not stds_date and not (start_date and end_date)):
         return JsonResponse({
             'success': False,
             'message': 'Missing required parameters'
@@ -1272,16 +1276,29 @@ def analyze_stds_dtm_orderbook(request):
         })
     
     try:
-        target_date = pd.to_datetime(stds_date).date()
-        df_filtered = df[pd.to_datetime(df['trade_date']).dt.date == target_date].copy()
+        # 날짜 필터링 방식 결정: 단일 날짜 또는 기간 범위
+        if stds_date:
+            # 기존 단일 날짜 방식
+            target_date = pd.to_datetime(stds_date).date()
+            df_filtered = df[pd.to_datetime(df['trade_date']).dt.date == target_date].copy()
+            date_display = stds_date  # 화면 표시용
+        else:
+            # 새로운 기간 범위 방식
+            start_dt = pd.to_datetime(start_date).date()
+            end_dt = pd.to_datetime(end_date).date()
+            df_filtered = df[
+                (pd.to_datetime(df['trade_date']).dt.date >= start_dt) & 
+                (pd.to_datetime(df['trade_date']).dt.date <= end_dt)
+            ].copy()
+            date_display = f"{start_date} ~ {end_date}"  # 화면 표시용
         
         if df_filtered.empty:
             return JsonResponse({
                 'success': True,
-                'date': stds_date,
+                'date': date_display,
                 'summary': {
                     'total_records': 0,
-                    'message': '해당 날짜의 거래 데이터가 없습니다.'
+                    'message': '해당 기간의 거래 데이터가 없습니다.'
                 }
             })
         
@@ -1290,7 +1307,7 @@ def analyze_stds_dtm_orderbook(request):
         patterns = analyzer.get_pattern_analysis()
         
         summary = {
-            'date': stds_date,
+            'date': date_display,  # 단일 날짜 또는 기간 범위
             'total_records': len(df_filtered),
             'buy_amount': patterns.get('total_buy_amount', 0),
             'buy_count': patterns.get('total_buy_count', 0),

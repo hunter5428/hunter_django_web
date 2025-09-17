@@ -32,24 +32,11 @@ class TomlExporter:
             성공 여부
         """
         try:
-            # 데이터 수집
+            # 데이터 수집 - 현재는 고객 정보만 포함
             collected_data = self.collector.collect_all_data(session_data)
             
-            # 메타데이터 추가
-            metadata = {
-                'created_at': datetime.now().isoformat(),
-                'version': '1.0',
-                'sections': list(collected_data.keys())
-            }
-            
-            # 최종 데이터 구조
-            final_data = {
-                'metadata': metadata,
-                **collected_data
-            }
-            
             # 파일 저장
-            return self.save_to_file(final_data, filepath)
+            return self.save_to_file(collected_data, filepath)
             
         except Exception as e:
             logger.exception(f"Failed to export TOML: {e}")

@@ -598,17 +598,30 @@
             // 기간 정보 추출
             const periodInfo = analysisResult.period_info || {};
             
+            // 추가: 트랜잭션 기간 정보 - fetchOrderbook 호출 시 tranPeriod에 original_min_start와 original_max_end가 포함됨
+            if (alertData && alertData.tranPeriod) {
+                // periodInfo에 원본 MIN/MAX 날짜 추가
+                periodInfo.min_date = alertData.tranPeriod.original_min_start || null;
+                periodInfo.end_date = alertData.tranPeriod.original_max_end || null;
+                
+                // KYC 완료시점 정보 추가
+                periodInfo.kyc_date = alertData.tranPeriod.kyc_date || null;
+                periodInfo.used_kyc_date = alertData.tranPeriod.used_kyc_date || false;
+            }
+            
             // 각 섹션 렌더링
             this._renderOrderbookPatterns(analysisResult, periodInfo);
-            this._renderStdsDtmSummary(alertData, analysisResult);  // 새로 추가
+            this._renderOrderbookMinMax(analysisResult, periodInfo); // MIN_MAX 기간 섹션 추가
+            this._renderStdsDtmSummary(alertData, analysisResult, periodInfo);
             this._renderAlertOrderbook(analysisResult, alertData);
             this._renderOrderbookDaily(analysisResult);
         }
 
         static _createOrderbookSections() {
             const sections = [
-                { id: 'section_orderbook_patterns', title: '거래원장(Orderbook) 개요', collapsed: false },
-                { id: 'section_alert_orderbook', title: 'ALERT ID별 매매/입출고 현황', collapsed: false },  // 새로운 섹션
+                { id: 'section_orderbook_patterns', title: '의심거래기간_90일+', collapsed: false },
+                { id: 'section_orderbook_minmax', title: '의심거래기간_MIN_MAX기간', collapsed: false }, // 추가된 새 섹션
+                { id: 'section_alert_orderbook', title: 'ALERT ID별 매매/입출고 현황', collapsed: false },
                 { id: 'section_orderbook_daily', title: '일자별 매수/매도, 입출금 현황', collapsed: true }
             ];
             
@@ -642,16 +655,85 @@
             if (section) {
                 section.style.display = 'block';
                 
-                // 🔥 수정: 조회에 사용된 날짜 범위 표시 (실제 데이터 기간이 아닌)
+                // 수정: 제목을 "의심거래기간_N개월+(시작날짜~종료날짜)" 형식으로 변경
                 const h3 = section.querySelector('h3');
                 if (h3 && periodInfo.start_date && periodInfo.end_date) {
-                    // monthsBack 정보가 있으면 표시
-                    const monthsInfo = data.monthsBack ? ` (-${data.monthsBack}개월)` : '';
-                    h3.textContent = `거래원장(Orderbook) 개요 (${periodInfo.start_date} ~ ${periodInfo.end_date}${monthsInfo})`;
+                    // 특정 RULE ID에 따라 일수 계산
+                    const endDate = new Date(periodInfo.end_date);
+                    let startDate = new Date(endDate);
+                    
+                    // 일수 정보 가져오기 (동적 또는 기본값)
+                    let dayCount, dayCountLabel;
+                    
+                    if (window.RuleUtils && typeof window.RuleUtils.getDayCountForRule === 'function') {
+                        // rule_daycount.json에서 불러온 값 사용
+                        const defaultRule = {
+                            isSpecial: periodInfo.has_special_rule || false
+                        };
+                        const ruleInfo = defaultRule.isSpecial ? 
+                            window.RuleUtils.getDayCountForRule('IO000') : // 특정 RULE ID가 있는 경우 참조값
+                            window.RuleUtils.getDayCountForRule('');       // 기본값
+                        
+                        dayCount = ruleInfo.days;
+                        dayCountLabel = ruleInfo.label;
+                    } else {
+                        // 기존 방식 (fallback)
+                        dayCount = periodInfo.has_special_rule ? 365 : 90;
+                        dayCountLabel = periodInfo.has_special_rule ? '365일' : '90일';
+                    }
+                    
+                    startDate.setDate(endDate.getDate() - dayCount);
+                    let startStr = startDate.toISOString().split('T')[0];
+                    
+                    // KYC 완료시점이 있고 그 시점이 계산된 시작일보다 더 나중인 경우 KYC 완료시점을 사용
+                    if (periodInfo.kyc_date && periodInfo.kyc_date > startStr) {
+                        startStr = periodInfo.kyc_date;
+                    }
+                    
+                    const endStr = periodInfo.end_date;
+                    
+                    h3.textContent = `의심거래기간_${dayCountLabel}+(${startStr}~${endStr})`;
                 }
             }
+
+            // 카드 생성 및 이벤트 처리
+            this._renderOrderbookCards(data, container);
+        }
+        
+        // 새로 추가: MIN_MAX 기간 섹션 렌더링
+        static _renderOrderbookMinMax(data, periodInfo) {
+            // MIN_MAX 기간 섹션의 컨테이너 가져오기
+            const container = document.getElementById('result_orderbook_minmax');
+            if (!container || !data.patterns) return;
             
-            // 패턴 카드 HTML 생성
+            const section = document.getElementById('section_orderbook_minmax');
+            if (section) {
+                section.style.display = 'block';
+                
+                // 제목 업데이트
+                const h3 = section.querySelector('h3');
+                if (h3) {
+                    // MIN_MAX 기간에 KYC 완료시점이 반영되어야 하는 경우 KYC 완료시점을 시작일로 사용
+                    let displayStartDate = periodInfo.min_date || '시작일 없음';
+                    
+                    // KYC 완료시점이 있고 그 시점이 원본 시작일보다 더 나중인 경우 KYC 완료시점을 사용
+                    if (periodInfo.kyc_date && periodInfo.min_date && periodInfo.kyc_date > periodInfo.min_date) {
+                        displayStartDate = periodInfo.kyc_date;
+                    }
+                    
+                    const titleText = `의심거래기간_MIN_MAX기간(${displayStartDate}~${periodInfo.end_date || '종료일 없음'})`;
+                    h3.textContent = titleText;
+                }
+            }
+
+            // 카드 생성 및 이벤트 처리
+            this._renderOrderbookCards(data, container);
+        }
+        
+        // 패턴 카드 HTML 생성 및 이벤트 처리 공통 함수
+        static _renderOrderbookCards(data, container) {
+            if (!container || !data.patterns) return;
+            
             const items = [
                 { key: 'buy', label: '총 매수', amount: data.patterns.total_buy_amount, count: data.patterns.total_buy_count, details: data.patterns.buy_details },
                 { key: 'sell', label: '총 매도', amount: data.patterns.total_sell_amount, count: data.patterns.total_sell_count, details: data.patterns.sell_details },
@@ -674,7 +756,7 @@
                             <span class="actual-amount">(${actualAmount}원)</span>
                         </div>
                         <div class="pattern-stat-count">${item.count.toLocaleString('ko-KR')}건</div>
-                        <div class="pattern-detail" id="detail-${item.key}">
+                        <div class="pattern-detail" id="detail-${container.id}-${item.key}">
                             ${this._renderPatternDetail(item.details)}
                         </div>
                     </div>`;
@@ -697,15 +779,15 @@
             });
         }
 
-        static _renderStdsDtmSummary(alertData, analysisResult) {
-            // STDS_DTM 요약 섹션 동적 생성
+        static _renderStdsDtmSummary(alertData, analysisResult, periodInfo) {
+            // TRAN_STRT ~ TRAN_END 기간 요약 섹션 동적 생성
             const sectionId = 'section_stds_dtm_summary';
             if (!document.getElementById(sectionId)) {
                 const section = document.createElement('div');
                 section.id = sectionId;
                 section.className = 'section';
                 section.innerHTML = `
-                    <h3>대표 ALERT STDS_DTM 날짜 요약</h3>
+                    <h3>대표 ALERT 거래기간 요약</h3>
                     <div class="table-wrap" id="result_stds_dtm_summary"></div>
                 `;
                 
@@ -722,7 +804,7 @@
             const section = document.getElementById(sectionId);
             if (section) section.style.display = 'block';
             
-            // 대표 ALERT의 STDS_DTM 찾기
+            // ALERT 데이터 확인
             if (!alertData || !alertData.rows) {
                 container.innerHTML = '<div class="stds-no-data">ALERT 데이터가 없습니다.</div>';
                 return;
@@ -733,9 +815,10 @@
             const repAlertId = alertData.currentAlertId || alertData.repAlertId;
             
             const idxAlertId = cols.indexOf('STR_ALERT_ID');
-            const idxStdsDtm = cols.indexOf('STDS_DTM');
+            const idxTranStart = cols.indexOf('TRAN_STRT');
+            const idxTranEnd = cols.indexOf('TRAN_END');
             
-            if (idxAlertId < 0 || idxStdsDtm < 0) {
+            if (idxAlertId < 0 || idxTranStart < 0 || idxTranEnd < 0) {
                 container.innerHTML = '<div class="stds-no-data">필요한 컬럼을 찾을 수 없습니다.</div>';
                 return;
             }
@@ -748,16 +831,27 @@
                 return;
             }
             
-            const stdsDtm = targetRow[idxStdsDtm];
-            if (!stdsDtm) {
-                container.innerHTML = '<div class="stds-no-data">STDS_DTM 정보가 없습니다.</div>';
+            const tranStart = targetRow[idxTranStart];
+            const tranEnd = targetRow[idxTranEnd];
+            
+            if (!tranStart || !tranEnd) {
+                container.innerHTML = '<div class="stds-no-data">거래 기간 정보가 없습니다.</div>';
                 return;
             }
             
-            // 로딩 표시
-            container.innerHTML = '<div class="stds-no-data">STDS_DTM 날짜 데이터 분석 중...</div>';
+            // 날짜 부분만 추출
+            let startDate = tranStart.split(' ')[0];
+            const endDate = tranEnd.split(' ')[0];
             
-            // 서버에 분석 요청
+            // KYC 완료시점이 있고 그 시점이 시작일보다 더 나중인 경우 KYC 완료시점을 사용
+            if (periodInfo && periodInfo.kyc_date && periodInfo.kyc_date > startDate) {
+                startDate = periodInfo.kyc_date;
+            }
+            
+            // 로딩 표시
+            container.innerHTML = '<div class="stds-no-data">거래 기간 데이터 분석 중...</div>';
+            
+            // 서버에 분석 요청 - STDS_DTM 대신 거래 기간 사용
             const cacheKey = analysisResult.cache_key;
             if (cacheKey) {
                 fetch(window.URLS.analyze_stds_dtm_orderbook, {
@@ -767,20 +861,21 @@
                         'X-CSRFToken': this._getCookie('csrftoken')
                     },
                     body: new URLSearchParams({
-                        stds_date: stdsDtm,
+                        start_date: startDate,  // TRAN_STRT 추가
+                        end_date: endDate,      // TRAN_END 추가
                         cache_key: cacheKey
                     })
                 })
                 .then(response => response.json())
                 .then(data => {
                     if (data.success && data.summary) {
-                        this._renderStdsDtmContent(container, data.summary, repAlertId || targetRow[idxAlertId]);
+                        this._renderStdsDtmContent(container, data.summary, repAlertId || targetRow[idxAlertId], startDate, endDate);
                     } else {
                         container.innerHTML = '<div class="stds-no-data">데이터 분석 실패</div>';
                     }
                 })
                 .catch(error => {
-                    console.error('STDS_DTM analysis error:', error);
+                    console.error('거래 기간 분석 오류:', error);
                     container.innerHTML = '<div class="stds-no-data">분석 중 오류 발생</div>';
                 });
             }
@@ -790,13 +885,13 @@
 
         }
 
-        static _renderStdsDtmContent(container, summary, alertId) {
+        static _renderStdsDtmContent(container, summary, alertId, startDate, endDate) {
             // "거래원장(Orderbook) 개요"와 동일한 UI 적용
             const section = document.getElementById('section_stds_dtm_summary');
             if (section) {
                 const h3 = section.querySelector('h3');
                 if (h3) {
-                    h3.textContent = `대표 ALERT STDS_DTM 날짜 요약 (ALERT ID: ${alertId}, 날짜: ${summary.date})`;
+                    h3.textContent = `대표 ALERT 거래기간 요약 (ALERT ID: ${alertId}, 기간: ${startDate} ~ ${endDate})`;
                 }
             }
             
@@ -921,8 +1016,26 @@
                 const tranEnd = row[idxTranEnd];
                 
                 // 조회 기간 계산 (특정 RULE ID는 12개월, 나머지는 3개월)
-                const monthsBack = (ruleId === 'IO000' || ruleId === 'IO111') ? 12 : 3;
-                const queryPeriod = this._calculateQueryPeriod(tranStart, tranEnd, monthsBack);
+                let hasSpecialRule, monthsBack;
+                
+                if (window.RuleUtils && typeof window.RuleUtils.getDayCountForRule === 'function') {
+                    // 동적으로 규칙 정보 가져오기
+                    const ruleInfo = window.RuleUtils.getDayCountForRule(ruleId);
+                    hasSpecialRule = ruleInfo.isSpecial;
+                    monthsBack = ruleInfo.days >= 360 ? 12 : 3;
+                } else {
+                    // 기존 방식 (fallback)
+                    hasSpecialRule = (ruleId === 'IO000' || ruleId === 'IO111');
+                    monthsBack = hasSpecialRule ? 12 : 3;
+                }
+                
+                // tranPeriod에 특정 RULE ID 정보 추가
+                const updatedTranPeriod = alertData.tranPeriod ? {
+                    ...alertData.tranPeriod,
+                    has_special_rule: hasSpecialRule
+                } : { has_special_rule: hasSpecialRule };
+                
+                const queryPeriod = this._calculateQueryPeriod(tranStart, tranEnd, monthsBack, updatedTranPeriod);
                 
                 const isRep = String(alertId) === String(repAlertId);
                 html += `<tr class="${isRep ? 'rep-row' : ''}" data-alert-id="${alertId}" 
@@ -967,25 +1080,57 @@
             });
         }
 
-        static _calculateQueryPeriod(tranStart, tranEnd, monthsBack) {
+        static _calculateQueryPeriod(tranStart, tranEnd, monthsBack, tranPeriod) {
             if (!tranStart || !tranEnd) {
-                return { start: '', end: '', display: 'N/A' };
+                return { start: '', end: '', display: 'N/A', min_date: '', max_date: '' };
             }
             
             try {
+                // 특정 RULE ID에 따라 다른 기간 설정 (monthsBack은 이미 설정되어 있음)
                 const startDate = new Date(tranStart);
                 startDate.setMonth(startDate.getMonth() - monthsBack);
                 
-                const startStr = startDate.toISOString().split('T')[0];
+                let startStr = startDate.toISOString().split('T')[0];
                 const endStr = tranEnd.split(' ')[0];
+                
+                // KYC 완료시점이 있고 그 시점이 계산된 시작일보다 더 나중인 경우 KYC 완료시점을 사용
+                if (tranPeriod && tranPeriod.kyc_date && tranPeriod.kyc_date > startStr) {
+                    startStr = tranPeriod.kyc_date;
+                }
+                
+                // MIN, MAX 기간 계산
+                const minDate = tranStart.split(' ')[0]; // TRAN_START의 MIN 값
+                const maxDate = endStr; // TRAN_END의 MAX 값
+                
+                // 특정 RULE ID에 따라 표시 텍스트 조정
+                let dayCountLabel;
+                
+                if (window.RuleUtils && typeof window.RuleUtils.getDayCountForRule === 'function') {
+                    // 동적으로 라벨 가져오기
+                    const hasSpecialRule = tranPeriod && tranPeriod.has_special_rule;
+                    const ruleInfo = hasSpecialRule ? 
+                        window.RuleUtils.getDayCountForRule('IO000') : 
+                        window.RuleUtils.getDayCountForRule('');
+                    
+                    // 일수 라벨에서 '일' 제거하고 '개월' 표시로 변경
+                    const daysNumber = ruleInfo.days;
+                    dayCountLabel = daysNumber >= 360 ? '12개월' : '3개월';
+                } else {
+                    // 기존 방식 (fallback)
+                    dayCountLabel = tranPeriod && tranPeriod.has_special_rule ? '12개월' : '3개월';
+                }
+                
+                let displayText = `${startStr} ~ ${endStr} (-${dayCountLabel})`;
                 
                 return {
                     start: startStr,
                     end: endStr,
-                    display: `${startStr} ~ ${endStr} (-${monthsBack}개월)`
+                    display: displayText,
+                    min_date: minDate,
+                    max_date: maxDate
                 };
             } catch (e) {
-                return { start: '', end: '', display: 'Error' };
+                return { start: '', end: '', display: 'Error', min_date: '', max_date: '' };
             }
         }
 

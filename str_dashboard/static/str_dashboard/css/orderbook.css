@@ -2,6 +2,16 @@
 
 /* ==================== Orderbook 분석 테이블 스타일 ==================== */
 
+/* 부제목 스타일 */
+.orderbook-subtitle {
+    color: #4fc3f7;
+    font-size: 14px;
+    margin-top: 5px;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #2a2a2a;
+}
+
 /* 패턴 요약 카드 컨테이너 */
 .orderbook-patterns-grid {
     display: grid;
