@@ -273,20 +273,21 @@
 {% block extra_js %}
 <script>
 window.URLS = {
+    // 데이터베이스 연결
     test_oracle_connection: "{% url 'test_oracle_connection' %}",
     test_redshift_connection: "{% url 'test_redshift_connection' %}",
     connect_all_databases: "{% url 'connect_all_databases' %}",
-    query_alert: "{% url 'query_alert_info' %}",
-    query_customer_unified: "{% url 'query_customer_unified' %}",
-    rule_history: "{% url 'rule_history_search' %}",
-    query_duplicate_unified: "{% url 'query_duplicate_unified' %}",
-    query_corp_related_persons: "{% url 'query_corp_related_persons' %}",
-    query_person_related_summary: "{% url 'query_person_related_summary' %}",
-    query_ip_access_history: "{% url 'query_ip_access_history' %}",
-    query_redshift_orderbook: "{% url 'query_redshift_orderbook' %}",
-    analyze_cached_orderbook: "{% url 'analyze_cached_orderbook' %}",
+    
+    // 통합 쿼리 (메인)
+    query_all_integrated: "{% url 'query_all_integrated' %}",
+    df_manager_status: "{% url 'df_manager_status' %}",
+    export_dataframe_csv: "{% url 'export_dataframe_csv' %}",
+    
+    // TOML Export
     prepare_toml_data: "{% url 'prepare_toml_data' %}",
     download_toml: "{% url 'download_toml' %}",
+    
+    // 세션
     save_to_session: "{% url 'save_to_session' %}"
 };
 </script>
