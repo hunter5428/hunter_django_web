@@ -3,7 +3,7 @@
 import json
 import logging
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse, HttpResponseBadRequest
+from django.http import JsonResponse, HttpResponseBadRequest, FileResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_POST
 from django.conf import settings
@@ -11,17 +11,24 @@ from datetime import datetime, timedelta
 import pandas as pd
 from typing import Optional, Dict, Any, List
 from pathlib import Path
-from .orderbook_analyzer import OrderbookAnalyzer
 from .toml import toml_collector, toml_exporter
 import tempfile
-from django.http import FileResponse
 
-from .db_utils import (
-    OracleConnection, 
+# 통합된 database 모듈에서 import
+from .database import (
+    OracleConnection,
     OracleConnectionError,
-    require_db_connection, 
-    execute_query_with_error_handling
+    OracleQueryError,
+    RedshiftConnection,
+    RedshiftConnectionError,
+    RedshiftQueryError,
+    SQLQueryManager,
+    require_oracle_connection,
+    require_redshift_connection,
+    execute_oracle_query_with_error_handling,
+    execute_redshift_query_with_error_handling
 )
+
 from .queries.rule_objectives import build_rule_to_objectives
 from .queries.rule_historic_search import (
     fetch_df_result_0, 
@@ -29,15 +36,7 @@ from .queries.rule_historic_search import (
     find_most_similar_rule_combinations
 )
 
-from .redshift_utils import (
-    RedshiftConnection,
-    RedshiftConnectionError,
-    require_redshift_connection,
-    execute_redshift_query_with_error_handling
-)
-
 logger = logging.getLogger(__name__)
-
 
 # ==================== 세션 관리 헬퍼 클래스 ====================
 class SessionManager:
@@ -108,11 +107,9 @@ def home(request):
     }
     return render(request, 'str_dashboard/home.html', context)
 
-
 @login_required
 def menu1_1(request):
     """ALERT ID 조회 페이지"""
-    # 이전 연결 정보에서 서비스명 추출
     default_service = 'PRDAMLKR.OCIAMLPRODDBA.OCIAMLPROD.ORACLEVCN.COM'
     
     db_info = SessionManager.get_data(request, 'db_conn')
@@ -125,7 +122,6 @@ def menu1_1(request):
                 pass
     
     rs_info = SessionManager.get_data(request, 'rs_conn')
-    rule_obj_map = build_rule_to_objectives()
     
     context = {
         'active_top_menu': 'menu1',
@@ -140,10 +136,8 @@ def menu1_1(request):
         'default_rs_port': '40127',
         'default_rs_dbname': 'prod',
         'default_rs_username': rs_info.get('username', '') if rs_info else '',
-        'rule_obj_map_json': json.dumps(rule_obj_map, ensure_ascii=False),
     }
     return render(request, 'str_dashboard/menu1_1/main.html', context)
-
 
 @login_required
 @require_POST
@@ -207,484 +201,6 @@ def test_oracle_connection(request):
             'success': False,
             'message': f'연결 실패: {str(e)}'
         })
-
-
-@login_required
-@require_POST
-@require_db_connection
-def query_alert_info(request, oracle_conn=None):
-    """ALERT ID 기반 정보 조회"""
-    alert_id = request.POST.get('alert_id', '').strip()
-    if not alert_id:
-        return HttpResponseBadRequest('Missing alert_id.')
-    
-    logger.info(f"Querying alert info for alert_id: {alert_id}")
-    
-    try:
-        result = execute_query_with_error_handling(
-            oracle_conn=oracle_conn,
-            sql_filename='alert_info_by_alert_id.sql',
-            bind_params={':alert_id': '?'},
-            query_params=[alert_id]
-        )
-        
-        if result.get('success'):
-            # Rule 객관식 매핑 추가
-            rule_obj_map = build_rule_to_objectives()
-            
-            # Alert 데이터 처리
-            cols = result.get('columns', [])
-            rows = result.get('rows', [])
-            
-            # canonical_ids와 rep_rule_id 추출
-            canonical_ids = []
-            rep_rule_id = None
-            cust_id = None
-            
-            if cols and rows:
-                rule_idx = cols.index('STR_RULE_ID') if 'STR_RULE_ID' in cols else -1
-                alert_idx = cols.index('STR_ALERT_ID') if 'STR_ALERT_ID' in cols else -1
-                cust_idx = cols.index('CUST_ID') if 'CUST_ID' in cols else -1
-                
-                if rule_idx >= 0:
-                    seen = set()
-                    for row in rows:
-                        rule_id = row[rule_idx]
-                        if rule_id and rule_id not in seen:
-                            seen.add(rule_id)
-                            canonical_ids.append(rule_id)
-                
-                # 대표 ALERT의 RULE ID 찾기
-                if alert_idx >= 0:
-                    for row in rows:
-                        if str(row[alert_idx]) == str(alert_id):
-                            if rule_idx >= 0:
-                                rep_rule_id = row[rule_idx]
-                            if cust_idx >= 0:
-                                cust_id = row[cust_idx]
-                            break
-            
-            # 세션에 저장 - 구조화된 데이터
-            SessionManager.save_multiple(request, {
-                'current_alert_id': alert_id,
-                'current_alert_data': {
-                    'alert_id': alert_id,
-                    'cols': cols,
-                    'rows': rows,
-                    'canonical_ids': canonical_ids,
-                    'rep_rule_id': rep_rule_id,
-                    'custIdForPerson': cust_id,
-                    'rule_obj_map': rule_obj_map  # 객관식 정보 추가
-                }
-            })
-            
-            result['canonical_ids'] = canonical_ids
-            result['rep_rule_id'] = rep_rule_id
-        
-        logger.info(f"Alert query result - success: {result.get('success')}, rows: {len(result.get('rows', []))}")
-        return JsonResponse(result)
-        
-    except Exception as e:
-        logger.exception(f"Error in query_alert_info: {e}")
-        return JsonResponse({
-            'success': False,
-            'message': f'쿼리 실행 중 오류: {e}'
-        })
-
-
-@login_required
-@require_POST
-@require_db_connection
-def query_customer_unified_info(request, oracle_conn=None):
-    """통합 고객 정보 조회"""
-    cust_id = request.POST.get('cust_id', '').strip()
-    
-    if not cust_id:
-        return HttpResponseBadRequest('Missing cust_id.')
-    
-    logger.info(f"Querying unified customer info for cust_id: {cust_id}")
-    
-    result = execute_query_with_error_handling(
-        oracle_conn=oracle_conn,
-        sql_filename='customer_unified_info.sql',
-        bind_params={':custId': '?'},
-        query_params=[cust_id]
-    )
-    
-    if result.get('success'):
-        columns = result.get('columns', [])
-        rows = result.get('rows', [])
-        
-        customer_type = None
-        if rows and len(rows) > 0:
-            cust_type_idx = columns.index('고객구분') if '고객구분' in columns else -1
-            if cust_type_idx >= 0:
-                customer_type = rows[0][cust_type_idx]
-        
-        result['customer_type'] = customer_type
-        
-        SessionManager.save_data(request, 'current_customer_data', {
-            'columns': columns,
-            'rows': rows,
-            'customer_type': customer_type,
-            'cust_id': cust_id
-        })
-        
-        logger.info(f"Unified query successful - customer_type: {customer_type}, rows: {len(rows)}")
-    
-    return JsonResponse(result)
-
-
-@login_required
-@require_POST
-@require_db_connection
-def rule_history_search(request, oracle_conn=None):
-    """RULE 히스토리 검색"""
-    rule_key = request.POST.get('rule_key', '').strip()
-    if not rule_key:
-        return HttpResponseBadRequest('Missing rule_key.')
-    
-    try:
-        db_info = SessionManager.get_data(request, 'db_conn')
-        
-        df0 = fetch_df_result_0(
-            jdbc_url=db_info['jdbc_url'],
-            driver_class=db_info['driver_class'],
-            driver_path=db_info['driver_path'],
-            username=db_info['username'],
-            password=db_info['password']
-        )
-        
-        df1 = aggregate_by_rule_id_list(df0)
-        matching_rows = df1[df1["STR_RULE_ID_LIST"] == rule_key]
-        
-        columns = list(matching_rows.columns) if not matching_rows.empty else list(df1.columns) if not df1.empty else []
-        rows = matching_rows.values.tolist()
-        
-        similar_list = []
-        if len(rows) == 0 and not df1.empty:
-            similar_list = find_most_similar_rule_combinations(rule_key, df1)
-        
-        SessionManager.save_data(request, 'current_rule_history_data', {
-            'columns': columns,
-            'rows': rows,
-            'searched_rule': rule_key,
-            'similar_list': similar_list
-        })
-        
-        logger.info(f"Rule history search completed. Found {len(rows)} matching rows for key: {rule_key}")
-        
-        return JsonResponse({
-            'success': True,
-            'columns': columns,
-            'rows': rows,
-            'searched_rule': rule_key,
-            'similar_list': similar_list
-        })
-        
-    except Exception as e:
-        logger.exception(f"Rule history search failed: {e}")
-        return JsonResponse({
-            'success': False,
-            'message': f'히스토리 조회 실패: {e}'
-        })
-
-
-@login_required
-@require_POST
-@require_db_connection
-def query_duplicate_unified(request, oracle_conn=None):
-    """통합 중복 회원 조회"""
-    current_cust_id = request.POST.get('current_cust_id', '').strip()
-    full_email = request.POST.get('full_email', '').strip() or None
-    phone_suffix = request.POST.get('phone_suffix', '').strip() or None
-    address = request.POST.get('address', '').strip() or None
-    detail_address = request.POST.get('detail_address', '').strip() or None
-    workplace_name = request.POST.get('workplace_name', '').strip() or None
-    workplace_address = request.POST.get('workplace_address', '').strip() or None
-    workplace_detail_address = request.POST.get('workplace_detail_address', '').strip() or None
-    
-    if not current_cust_id:
-        return JsonResponse({
-            'success': True,
-            'columns': [],
-            'rows': []
-        })
-    
-    logger.debug(f"Duplicate search params - cust_id: {current_cust_id}")
-    
-    result = execute_query_with_error_handling(
-        oracle_conn=oracle_conn,
-        sql_filename='duplicate_unified.sql',
-        bind_params={
-            ':current_cust_id': '?',
-            ':address': '?',
-            ':detail_address': '?',
-            ':workplace_name': '?',
-            ':workplace_address': '?',
-            ':workplace_detail_address': '?',
-            ':phone_suffix': '?'
-        },
-        query_params=[
-            current_cust_id, address, address, detail_address,
-            current_cust_id, workplace_name, workplace_name,
-            current_cust_id, workplace_address, workplace_address, 
-            workplace_detail_address, workplace_detail_address,
-            phone_suffix, phone_suffix
-        ]
-    )
-    
-    if result.get('success'):
-        SessionManager.save_data(request, 'duplicate_persons_data', {
-            'columns': result.get('columns', []),
-            'rows': result.get('rows', []),
-            'match_criteria': {
-                'email': full_email,
-                'phone_suffix': phone_suffix,
-                'address': address,
-                'detail_address': detail_address,
-                'workplace_name': workplace_name,
-                'workplace_address': workplace_address
-            }
-        })
-        
-        logger.info(f"Duplicate search successful - found {len(result.get('rows', []))} records")
-    
-    return JsonResponse(result)
-
-
-@login_required
-@require_POST
-@require_db_connection
-def query_corp_related_persons(request, oracle_conn=None):
-    """법인 관련인 정보 조회"""
-    cust_id = request.POST.get('cust_id', '').strip()
-    
-    if not cust_id:
-        return HttpResponseBadRequest('Missing cust_id.')
-    
-    logger.info(f"Querying corp related persons for cust_id: {cust_id}")
-    
-    result = execute_query_with_error_handling(
-        oracle_conn=oracle_conn,
-        sql_filename='corp_related_persons.sql',
-        bind_params={':cust_id': '?'},
-        query_params=[cust_id]
-    )
-    
-    if result.get('success'):
-        SessionManager.save_data(request, 'current_corp_related_data', {
-            'columns': result.get('columns', []),
-            'rows': result.get('rows', [])
-        })
-        logger.info(f"Corp related persons query successful - found {len(result.get('rows', []))} persons")
-    
-    return JsonResponse(result)
-
-
-@login_required
-@require_POST
-@require_db_connection
-def query_person_related_summary(request, oracle_conn=None):
-    """개인 고객의 관련인 정보 조회"""
-    cust_id = request.POST.get('cust_id', '').strip()
-    start_date = request.POST.get('start_date', '').strip()
-    end_date = request.POST.get('end_date', '').strip()
-    
-    if not all([cust_id, start_date, end_date]):
-        return JsonResponse({
-            'success': False,
-            'message': 'Missing required parameters'
-        })
-    
-    logger.info(f"Querying person related summary - cust_id: {cust_id}")
-    
-    try:
-        result = execute_query_with_error_handling(
-            oracle_conn=oracle_conn,
-            sql_filename='person_related_summary.sql',
-            bind_params={
-                ':cust_id': '?',
-                ':start_date': '?',
-                ':end_date': '?'
-            },
-            query_params=[
-                start_date, end_date, cust_id,
-                cust_id, start_date, end_date
-            ]
-        )
-        
-        if not result.get('success'):
-            return JsonResponse(result)
-        
-        columns = result.get('columns', [])
-        rows = result.get('rows', [])
-        
-        related_persons = {}
-        for row in rows:
-            record_type = row[0] if len(row) > 0 else None
-            cust_id_val = row[1] if len(row) > 1 else None
-            
-            if not cust_id_val:
-                continue
-            
-            if cust_id_val not in related_persons:
-                related_persons[cust_id_val] = {
-                    'info': None,
-                    'transactions': []
-                }
-            
-            if record_type == 'PERSON_INFO':
-                related_persons[cust_id_val]['info'] = {
-                    'cust_id': cust_id_val,
-                    'name': row[2],
-                    'id_number': row[3],
-                    'birth_date': row[4],
-                    'age': row[5],
-                    'gender': row[6],
-                    'address': row[7],
-                    'job': row[8],
-                    'workplace': row[9],
-                    'workplace_addr': row[10],
-                    'income_source': row[11],
-                    'tran_purpose': row[12],
-                    'risk_grade': row[13],
-                    'total_tran_count': row[14]
-                }
-            elif record_type == 'TRAN_SUMMARY':
-                related_persons[cust_id_val]['transactions'].append({
-                    'coin_symbol': row[15],
-                    'tran_type': row[16],
-                    'tran_qty': row[17],
-                    'tran_amt': row[18],
-                    'tran_cnt': row[19]
-                })
-        
-        SessionManager.save_data(request, 'current_person_related_data', related_persons)
-        
-        summary_text = format_related_person_summary(related_persons)
-        
-        return JsonResponse({
-            'success': True,
-            'related_persons': related_persons,
-            'summary_text': summary_text,
-            'raw_columns': columns,
-            'raw_rows': rows
-        })
-        
-    except Exception as e:
-        logger.exception(f"Error in query_person_related_summary: {e}")
-        return JsonResponse({
-            'success': False,
-            'message': f'관련인 조회 중 오류: {e}'
-        })
-
-
-def format_related_person_summary(related_persons):
-    """관련인 정보를 텍스트 형식으로 변환"""
-    if not related_persons:
-        return "내부입출금 거래 관련인이 없습니다."
-    
-    lines = []
-    lines.append("=" * 80)
-    lines.append("【 개인 고객 관련인 정보 (내부입출금 거래 상대방) 】")
-    lines.append("=" * 80)
-    
-    for idx, (cust_id, data) in enumerate(related_persons.items(), 1):
-        info = data.get('info')
-        transactions = data.get('transactions', [])
-        
-        if not info:
-            continue
-        
-        lines.append(f"\n◆ 관련인 {idx}: {info.get('name', 'N/A')} (CID: {cust_id})")
-        lines.append("-" * 60)
-        
-        # 기본 정보
-        lines.append(f"  • 실명번호: {info.get('id_number', 'N/A')}")
-        lines.append(f"  • 생년월일: {info.get('birth_date', 'N/A')} (만 {info.get('age', 'N/A')}세)")
-        lines.append(f"  • 성별: {info.get('gender', 'N/A')}")
-        lines.append(f"  • 거주지: {info.get('address', 'N/A')}")
-        
-        if info.get('job'):
-            lines.append(f"  • 직업: {info.get('job')}")
-        if info.get('workplace'):
-            lines.append(f"  • 직장명: {info.get('workplace')}")
-        
-        lines.append(f"  • 위험등급: {info.get('risk_grade', 'N/A')}")
-        lines.append(f"  • 총 거래횟수: {info.get('total_tran_count', 0)}회")
-        
-        # 거래 내역
-        if transactions:
-            lines.append("\n  ▶ 거래 내역")
-            deposits = [t for t in transactions if t.get('tran_type') == '내부입고']
-            withdrawals = [t for t in transactions if t.get('tran_type') == '내부출고']
-            
-            if deposits:
-                lines.append("  [내부입고]")
-                for t in deposits:
-                    qty = float(t.get('tran_qty', 0) or 0)
-                    amt = float(t.get('tran_amt', 0) or 0)
-                    cnt = int(t.get('tran_cnt', 0) or 0)
-                    lines.append(f"    - {t.get('coin_symbol')}: {qty:,.4f}개, {amt:,.0f}원, {cnt}건")
-            
-            if withdrawals:
-                lines.append("  [내부출고]")
-                for t in withdrawals:
-                    qty = float(t.get('tran_qty', 0) or 0)
-                    amt = float(t.get('tran_amt', 0) or 0)
-                    cnt = int(t.get('tran_cnt', 0) or 0)
-                    lines.append(f"    - {t.get('coin_symbol')}: {qty:,.4f}개, {amt:,.0f}원, {cnt}건")
-    
-    lines.append("\n" + "=" * 80)
-    return "\n".join(lines)
-
-
-@login_required
-@require_POST
-@require_db_connection
-def query_ip_access_history(request, oracle_conn=None):
-    """IP 접속 이력 조회"""
-    mem_id = request.POST.get('mem_id', '').strip()
-    start_date = request.POST.get('start_date', '').strip()
-    end_date = request.POST.get('end_date', '').strip()
-    
-    if not all([mem_id, start_date, end_date]):
-        return JsonResponse({
-            'success': False,
-            'message': 'Missing required parameters'
-        })
-    
-    logger.info(f"Querying IP access history - MID: {mem_id}")
-    
-    try:
-        result = execute_query_with_error_handling(
-            oracle_conn=oracle_conn,
-            sql_filename='query_ip_access_history.sql',
-            bind_params={
-                ':mem_id': '?',
-                ':start_date': '?', 
-                ':end_date': '?'
-            },
-            query_params=[mem_id, start_date, end_date]
-        )
-        
-        if result.get('success'):
-            SessionManager.save_data(request, 'ip_history_data', {
-                'columns': result.get('columns', []),
-                'rows': result.get('rows', [])
-            })
-            logger.info(f"IP access history query successful - found {len(result.get('rows', []))} records")
-        
-        return JsonResponse(result)
-        
-    except Exception as e:
-        logger.exception(f"Error in query_ip_access_history: {e}")
-        return JsonResponse({
-            'success': False,
-            'message': f'IP 조회 중 오류: {e}'
-        })
-
 
 @login_required
 @require_POST
@@ -842,6 +358,484 @@ def connect_all_databases(request):
             'oracle_error': oracle_error,
             'redshift_status': redshift_status,
             'redshift_error': redshift_error
+        })
+
+
+
+@login_required
+@require_POST
+@require_db_connection
+def query_alert_info(request, oracle_conn=None):
+    """ALERT ID 기반 정보 조회"""
+    alert_id = request.POST.get('alert_id', '').strip()
+    if not alert_id:
+        return HttpResponseBadRequest('Missing alert_id.')
+    
+    logger.info(f"Querying alert info for alert_id: {alert_id}")
+    
+    try:
+        result = execute_oracle_query_with_error_handling(
+            oracle_conn=oracle_conn,
+            sql_filename='alert_info_by_alert_id.sql',
+            bind_params={':alert_id': '?'},
+            query_params=[alert_id]
+        )
+        
+        if result.get('success'):
+            # Rule 객관식 매핑 추가
+            rule_obj_map = build_rule_to_objectives()
+            
+            # Alert 데이터 처리
+            cols = result.get('columns', [])
+            rows = result.get('rows', [])
+            
+            # canonical_ids와 rep_rule_id 추출
+            canonical_ids = []
+            rep_rule_id = None
+            cust_id = None
+            
+            if cols and rows:
+                rule_idx = cols.index('STR_RULE_ID') if 'STR_RULE_ID' in cols else -1
+                alert_idx = cols.index('STR_ALERT_ID') if 'STR_ALERT_ID' in cols else -1
+                cust_idx = cols.index('CUST_ID') if 'CUST_ID' in cols else -1
+                
+                if rule_idx >= 0:
+                    seen = set()
+                    for row in rows:
+                        rule_id = row[rule_idx]
+                        if rule_id and rule_id not in seen:
+                            seen.add(rule_id)
+                            canonical_ids.append(rule_id)
+                
+                # 대표 ALERT의 RULE ID 찾기
+                if alert_idx >= 0:
+                    for row in rows:
+                        if str(row[alert_idx]) == str(alert_id):
+                            if rule_idx >= 0:
+                                rep_rule_id = row[rule_idx]
+                            if cust_idx >= 0:
+                                cust_id = row[cust_idx]
+                            break
+            
+            # 세션에 저장 - 구조화된 데이터
+            SessionManager.save_multiple(request, {
+                'current_alert_id': alert_id,
+                'current_alert_data': {
+                    'alert_id': alert_id,
+                    'cols': cols,
+                    'rows': rows,
+                    'canonical_ids': canonical_ids,
+                    'rep_rule_id': rep_rule_id,
+                    'custIdForPerson': cust_id,
+                    'rule_obj_map': rule_obj_map  # 객관식 정보 추가
+                }
+            })
+            
+            result['canonical_ids'] = canonical_ids
+            result['rep_rule_id'] = rep_rule_id
+        
+        logger.info(f"Alert query result - success: {result.get('success')}, rows: {len(result.get('rows', []))}")
+        return JsonResponse(result)
+        
+    except Exception as e:
+        logger.exception(f"Error in query_alert_info: {e}")
+        return JsonResponse({
+            'success': False,
+            'message': f'쿼리 실행 중 오류: {e}'
+        })
+
+
+@login_required
+@require_POST
+@require_db_connection
+def query_customer_unified_info(request, oracle_conn=None):
+    """통합 고객 정보 조회"""
+    cust_id = request.POST.get('cust_id', '').strip()
+    
+    if not cust_id:
+        return HttpResponseBadRequest('Missing cust_id.')
+    
+    logger.info(f"Querying unified customer info for cust_id: {cust_id}")
+    
+    result = execute_oracle_query_with_error_handling(
+        oracle_conn=oracle_conn,
+        sql_filename='customer_unified_info.sql',
+        bind_params={':custId': '?'},
+        query_params=[cust_id]
+    )
+    
+    if result.get('success'):
+        columns = result.get('columns', [])
+        rows = result.get('rows', [])
+        
+        customer_type = None
+        if rows and len(rows) > 0:
+            cust_type_idx = columns.index('고객구분') if '고객구분' in columns else -1
+            if cust_type_idx >= 0:
+                customer_type = rows[0][cust_type_idx]
+        
+        result['customer_type'] = customer_type
+        
+        SessionManager.save_data(request, 'current_customer_data', {
+            'columns': columns,
+            'rows': rows,
+            'customer_type': customer_type,
+            'cust_id': cust_id
+        })
+        
+        logger.info(f"Unified query successful - customer_type: {customer_type}, rows: {len(rows)}")
+    
+    return JsonResponse(result)
+
+
+@login_required
+@require_POST
+@require_db_connection
+def rule_history_search(request, oracle_conn=None):
+    """RULE 히스토리 검색"""
+    rule_key = request.POST.get('rule_key', '').strip()
+    if not rule_key:
+        return HttpResponseBadRequest('Missing rule_key.')
+    
+    try:
+        db_info = SessionManager.get_data(request, 'db_conn')
+        
+        df0 = fetch_df_result_0(
+            jdbc_url=db_info['jdbc_url'],
+            driver_class=db_info['driver_class'],
+            driver_path=db_info['driver_path'],
+            username=db_info['username'],
+            password=db_info['password']
+        )
+        
+        df1 = aggregate_by_rule_id_list(df0)
+        matching_rows = df1[df1["STR_RULE_ID_LIST"] == rule_key]
+        
+        columns = list(matching_rows.columns) if not matching_rows.empty else list(df1.columns) if not df1.empty else []
+        rows = matching_rows.values.tolist()
+        
+        similar_list = []
+        if len(rows) == 0 and not df1.empty:
+            similar_list = find_most_similar_rule_combinations(rule_key, df1)
+        
+        SessionManager.save_data(request, 'current_rule_history_data', {
+            'columns': columns,
+            'rows': rows,
+            'searched_rule': rule_key,
+            'similar_list': similar_list
+        })
+        
+        logger.info(f"Rule history search completed. Found {len(rows)} matching rows for key: {rule_key}")
+        
+        return JsonResponse({
+            'success': True,
+            'columns': columns,
+            'rows': rows,
+            'searched_rule': rule_key,
+            'similar_list': similar_list
+        })
+        
+    except Exception as e:
+        logger.exception(f"Rule history search failed: {e}")
+        return JsonResponse({
+            'success': False,
+            'message': f'히스토리 조회 실패: {e}'
+        })
+
+
+@login_required
+@require_POST
+@require_db_connection
+def query_duplicate_unified(request, oracle_conn=None):
+    """통합 중복 회원 조회"""
+    current_cust_id = request.POST.get('current_cust_id', '').strip()
+    full_email = request.POST.get('full_email', '').strip() or None
+    phone_suffix = request.POST.get('phone_suffix', '').strip() or None
+    address = request.POST.get('address', '').strip() or None
+    detail_address = request.POST.get('detail_address', '').strip() or None
+    workplace_name = request.POST.get('workplace_name', '').strip() or None
+    workplace_address = request.POST.get('workplace_address', '').strip() or None
+    workplace_detail_address = request.POST.get('workplace_detail_address', '').strip() or None
+    
+    if not current_cust_id:
+        return JsonResponse({
+            'success': True,
+            'columns': [],
+            'rows': []
+        })
+    
+    logger.debug(f"Duplicate search params - cust_id: {current_cust_id}")
+    
+    result = execute_oracle_query_with_error_handling(
+        oracle_conn=oracle_conn,
+        sql_filename='duplicate_unified.sql',
+        bind_params={
+            ':current_cust_id': '?',
+            ':address': '?',
+            ':detail_address': '?',
+            ':workplace_name': '?',
+            ':workplace_address': '?',
+            ':workplace_detail_address': '?',
+            ':phone_suffix': '?'
+        },
+        query_params=[
+            current_cust_id, address, address, detail_address,
+            current_cust_id, workplace_name, workplace_name,
+            current_cust_id, workplace_address, workplace_address, 
+            workplace_detail_address, workplace_detail_address,
+            phone_suffix, phone_suffix
+        ]
+    )
+    
+    if result.get('success'):
+        SessionManager.save_data(request, 'duplicate_persons_data', {
+            'columns': result.get('columns', []),
+            'rows': result.get('rows', []),
+            'match_criteria': {
+                'email': full_email,
+                'phone_suffix': phone_suffix,
+                'address': address,
+                'detail_address': detail_address,
+                'workplace_name': workplace_name,
+                'workplace_address': workplace_address
+            }
+        })
+        
+        logger.info(f"Duplicate search successful - found {len(result.get('rows', []))} records")
+    
+    return JsonResponse(result)
+
+
+@login_required
+@require_POST
+@require_db_connection
+def query_corp_related_persons(request, oracle_conn=None):
+    """법인 관련인 정보 조회"""
+    cust_id = request.POST.get('cust_id', '').strip()
+    
+    if not cust_id:
+        return HttpResponseBadRequest('Missing cust_id.')
+    
+    logger.info(f"Querying corp related persons for cust_id: {cust_id}")
+    
+    result = execute_oracle_query_with_error_handling(
+        oracle_conn=oracle_conn,
+        sql_filename='corp_related_persons.sql',
+        bind_params={':cust_id': '?'},
+        query_params=[cust_id]
+    )
+    
+    if result.get('success'):
+        SessionManager.save_data(request, 'current_corp_related_data', {
+            'columns': result.get('columns', []),
+            'rows': result.get('rows', [])
+        })
+        logger.info(f"Corp related persons query successful - found {len(result.get('rows', []))} persons")
+    
+    return JsonResponse(result)
+
+
+@login_required
+@require_POST
+@require_db_connection
+def query_person_related_summary(request, oracle_conn=None):
+    """개인 고객의 관련인 정보 조회"""
+    cust_id = request.POST.get('cust_id', '').strip()
+    start_date = request.POST.get('start_date', '').strip()
+    end_date = request.POST.get('end_date', '').strip()
+    
+    if not all([cust_id, start_date, end_date]):
+        return JsonResponse({
+            'success': False,
+            'message': 'Missing required parameters'
+        })
+    
+    logger.info(f"Querying person related summary - cust_id: {cust_id}")
+    
+    try:
+        result = execute_oracle_query_with_error_handling(
+            oracle_conn=oracle_conn,
+            sql_filename='person_related_summary.sql',
+            bind_params={
+                ':cust_id': '?',
+                ':start_date': '?',
+                ':end_date': '?'
+            },
+            query_params=[
+                start_date, end_date, cust_id,
+                cust_id, start_date, end_date
+            ]
+        )
+        
+        if not result.get('success'):
+            return JsonResponse(result)
+        
+        columns = result.get('columns', [])
+        rows = result.get('rows', [])
+        
+        related_persons = {}
+        for row in rows:
+            record_type = row[0] if len(row) > 0 else None
+            cust_id_val = row[1] if len(row) > 1 else None
+            
+            if not cust_id_val:
+                continue
+            
+            if cust_id_val not in related_persons:
+                related_persons[cust_id_val] = {
+                    'info': None,
+                    'transactions': []
+                }
+            
+            if record_type == 'PERSON_INFO':
+                related_persons[cust_id_val]['info'] = {
+                    'cust_id': cust_id_val,
+                    'name': row[2],
+                    'id_number': row[3],
+                    'birth_date': row[4],
+                    'age': row[5],
+                    'gender': row[6],
+                    'address': row[7],
+                    'job': row[8],
+                    'workplace': row[9],
+                    'workplace_addr': row[10],
+                    'income_source': row[11],
+                    'tran_purpose': row[12],
+                    'risk_grade': row[13],
+                    'total_tran_count': row[14]
+                }
+            elif record_type == 'TRAN_SUMMARY':
+                related_persons[cust_id_val]['transactions'].append({
+                    'coin_symbol': row[15],
+                    'tran_type': row[16],
+                    'tran_qty': row[17],
+                    'tran_amt': row[18],
+                    'tran_cnt': row[19]
+                })
+        
+        SessionManager.save_data(request, 'current_person_related_data', related_persons)
+        
+        summary_text = format_related_person_summary(related_persons)
+        
+        return JsonResponse({
+            'success': True,
+            'related_persons': related_persons,
+            'summary_text': summary_text,
+            'raw_columns': columns,
+            'raw_rows': rows
+        })
+        
+    except Exception as e:
+        logger.exception(f"Error in query_person_related_summary: {e}")
+        return JsonResponse({
+            'success': False,
+            'message': f'관련인 조회 중 오류: {e}'
+        })
+
+
+def format_related_person_summary(related_persons):
+    """관련인 정보를 텍스트 형식으로 변환"""
+    if not related_persons:
+        return "내부입출금 거래 관련인이 없습니다."
+    
+    lines = []
+    lines.append("=" * 80)
+    lines.append("【 개인 고객 관련인 정보 (내부입출금 거래 상대방) 】")
+    lines.append("=" * 80)
+    
+    for idx, (cust_id, data) in enumerate(related_persons.items(), 1):
+        info = data.get('info')
+        transactions = data.get('transactions', [])
+        
+        if not info:
+            continue
+        
+        lines.append(f"\n◆ 관련인 {idx}: {info.get('name', 'N/A')} (CID: {cust_id})")
+        lines.append("-" * 60)
+        
+        # 기본 정보
+        lines.append(f"  • 실명번호: {info.get('id_number', 'N/A')}")
+        lines.append(f"  • 생년월일: {info.get('birth_date', 'N/A')} (만 {info.get('age', 'N/A')}세)")
+        lines.append(f"  • 성별: {info.get('gender', 'N/A')}")
+        lines.append(f"  • 거주지: {info.get('address', 'N/A')}")
+        
+        if info.get('job'):
+            lines.append(f"  • 직업: {info.get('job')}")
+        if info.get('workplace'):
+            lines.append(f"  • 직장명: {info.get('workplace')}")
+        
+        lines.append(f"  • 위험등급: {info.get('risk_grade', 'N/A')}")
+        lines.append(f"  • 총 거래횟수: {info.get('total_tran_count', 0)}회")
+        
+        # 거래 내역
+        if transactions:
+            lines.append("\n  ▶ 거래 내역")
+            deposits = [t for t in transactions if t.get('tran_type') == '내부입고']
+            withdrawals = [t for t in transactions if t.get('tran_type') == '내부출고']
+            
+            if deposits:
+                lines.append("  [내부입고]")
+                for t in deposits:
+                    qty = float(t.get('tran_qty', 0) or 0)
+                    amt = float(t.get('tran_amt', 0) or 0)
+                    cnt = int(t.get('tran_cnt', 0) or 0)
+                    lines.append(f"    - {t.get('coin_symbol')}: {qty:,.4f}개, {amt:,.0f}원, {cnt}건")
+            
+            if withdrawals:
+                lines.append("  [내부출고]")
+                for t in withdrawals:
+                    qty = float(t.get('tran_qty', 0) or 0)
+                    amt = float(t.get('tran_amt', 0) or 0)
+                    cnt = int(t.get('tran_cnt', 0) or 0)
+                    lines.append(f"    - {t.get('coin_symbol')}: {qty:,.4f}개, {amt:,.0f}원, {cnt}건")
+    
+    lines.append("\n" + "=" * 80)
+    return "\n".join(lines)
+
+
+@login_required
+@require_POST
+@require_db_connection
+def query_ip_access_history(request, oracle_conn=None):
+    """IP 접속 이력 조회"""
+    mem_id = request.POST.get('mem_id', '').strip()
+    start_date = request.POST.get('start_date', '').strip()
+    end_date = request.POST.get('end_date', '').strip()
+    
+    if not all([mem_id, start_date, end_date]):
+        return JsonResponse({
+            'success': False,
+            'message': 'Missing required parameters'
+        })
+    
+    logger.info(f"Querying IP access history - MID: {mem_id}")
+    
+    try:
+        result = execute_oracle_query_with_error_handling(
+            oracle_conn=oracle_conn,
+            sql_filename='query_ip_access_history.sql',
+            bind_params={
+                ':mem_id': '?',
+                ':start_date': '?', 
+                ':end_date': '?'
+            },
+            query_params=[mem_id, start_date, end_date]
+        )
+        
+        if result.get('success'):
+            SessionManager.save_data(request, 'ip_history_data', {
+                'columns': result.get('columns', []),
+                'rows': result.get('rows', [])
+            })
+            logger.info(f"IP access history query successful - found {len(result.get('rows', []))} records")
+        
+        return JsonResponse(result)
+        
+    except Exception as e:
+        logger.exception(f"Error in query_ip_access_history: {e}")
+        return JsonResponse({
+            'success': False,
+            'message': f'IP 조회 중 오류: {e}'
         })
 
 
@@ -1388,8 +1382,57 @@ def save_to_session(request):
             'success': False,
             'message': f'Failed to save: {e}'
         })
-    
 
+@login_required
+@require_POST
+def prepare_toml_data(request):
+    """화면에 렌더링된 데이터를 수집하여 TOML 형식으로 준비"""
+    try:
+        # 세션에서 모든 관련 데이터 수집
+        session_data = {
+            'current_alert_data': SessionManager.get_data(request, 'current_alert_data', {}),
+            'current_alert_id': SessionManager.get_data(request, 'current_alert_id', ''),
+            'current_customer_data': SessionManager.get_data(request, 'current_customer_data', {}),
+            'current_corp_related_data': SessionManager.get_data(request, 'current_corp_related_data', {}),
+            'current_person_related_data': SessionManager.get_data(request, 'current_person_related_data', {}),
+            'current_rule_history_data': SessionManager.get_data(request, 'current_rule_history_data', {}),
+            'duplicate_persons_data': SessionManager.get_data(request, 'duplicate_persons_data', {}),
+            'ip_history_data': SessionManager.get_data(request, 'ip_history_data', {}),
+            'current_orderbook_analysis': SessionManager.get_data(request, 'current_orderbook_analysis', {}),
+        }
+        
+        alert_id = SessionManager.get_data(request, 'current_alert_id', 'unknown')
+        filename = toml_exporter.generate_filename(alert_id)
+        
+        tmp_dir = tempfile.gettempdir()
+        tmp_path = Path(tmp_dir) / filename
+        
+        success = toml_exporter.export_to_toml(session_data, str(tmp_path))
+        
+        if success:
+            SessionManager.save_data(request, 'toml_temp_path', str(tmp_path))
+            
+            collected_data = toml_collector.collect_all_data(session_data)
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'TOML 데이터 준비 완료',
+                'data_count': len(collected_data),
+                'sections': list(collected_data.keys()),
+                'filename': filename
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'message': 'TOML 데이터 준비 실패'
+            })
+            
+    except Exception as e:
+        logger.exception(f"Error preparing TOML data: {e}")
+        return JsonResponse({
+            'success': False,
+            'message': f'TOML 데이터 준비 실패: {str(e)}'
+        })
 
 @login_required
 def download_toml(request):
@@ -1412,15 +1455,6 @@ def download_toml(request):
             filename=filename
         )
         
-        def cleanup():
-            try:
-                Path(tmp_path).unlink()
-            except:
-                pass
-        
-        import atexit
-        atexit.register(cleanup)
-        
         return response
         
     except Exception as e:
@@ -1429,75 +1463,6 @@ def download_toml(request):
             'success': False,
             'message': f'TOML 다운로드 실패: {str(e)}'
         })
-
-
-@login_required
-@require_POST
-def prepare_toml_data(request):
-    """화면에 렌더링된 데이터를 수집하여 TOML 형식으로 준비"""
-    try:
-        # 세션에서 모든 관련 데이터 수집
-        session_data = {
-            'current_alert_data': SessionManager.get_data(request, 'current_alert_data', {}),
-            'current_alert_id': SessionManager.get_data(request, 'current_alert_id', ''),
-            'current_customer_data': SessionManager.get_data(request, 'current_customer_data', {}),
-            'current_corp_related_data': SessionManager.get_data(request, 'current_corp_related_data', {}),
-            'current_person_related_data': SessionManager.get_data(request, 'current_person_related_data', {}),
-            'current_rule_history_data': SessionManager.get_data(request, 'current_rule_history_data', {}),
-            'duplicate_persons_data': SessionManager.get_data(request, 'duplicate_persons_data', {}),
-            'ip_history_data': SessionManager.get_data(request, 'ip_history_data', {}),
-            'current_orderbook_analysis': SessionManager.get_data(request, 'current_orderbook_analysis', {}),
-            'current_stds_dtm_summary': SessionManager.get_data(request, 'current_stds_dtm_summary', {})
-        }
-        
-        # 디버깅 로그
-        logger.info("=== Session Data Keys ===")
-        for key, value in session_data.items():
-            if value:
-                logger.info(f"{key}: {type(value)}, size: {len(str(value))}")
-                if isinstance(value, dict):
-                    logger.info(f"  keys: {list(value.keys())}")
-        
-        # TOML 파일명 생성
-        alert_id = SessionManager.get_data(request, 'current_alert_id', 'unknown')
-        filename = toml_exporter.generate_filename(alert_id)
-        
-        # 임시 파일 경로 생성
-        tmp_dir = tempfile.gettempdir()
-        tmp_path = Path(tmp_dir) / filename
-        
-        # TOML 내보내기 (toml_exporter 사용)
-        success = toml_exporter.export_to_toml(session_data, str(tmp_path))
-        
-        if success:
-            # 세션에 임시 파일 경로 저장
-            SessionManager.save_data(request, 'toml_temp_path', str(tmp_path))
-            
-            # 수집된 데이터 정보 가져오기
-            collected_data = toml_collector.collect_all_data(session_data)
-            
-            return JsonResponse({
-                'success': True,
-                'message': 'TOML 데이터 준비 완료',
-                'data_count': len(collected_data),
-                'sections': list(collected_data.keys()),
-                'filename': filename
-            })
-        else:
-            return JsonResponse({
-                'success': False,
-                'message': 'TOML 데이터 준비 실패'
-            })
-            
-    except Exception as e:
-        logger.exception(f"Error preparing TOML data: {e}")
-        return JsonResponse({
-            'success': False,
-            'message': f'TOML 데이터 준비 실패: {str(e)}'
-        })
-    
-
-
 
 
 

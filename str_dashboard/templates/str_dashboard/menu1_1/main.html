@@ -3,12 +3,6 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'str_dashboard/css/menu1_1.css' %}">
-<link rel="stylesheet" href="{% static 'str_dashboard/css/table.component.css' %}">
-<link rel="stylesheet" href="{% static 'str_dashboard/css/customer_unified.css' %}">
-<link rel="stylesheet" href="{% static 'str_dashboard/css/orderbook.css' %}">
-<link rel="stylesheet" href="{% static 'str_dashboard/css/alert_orderbook.css' %}">
-<link rel="stylesheet" href="{% static 'str_dashboard/css/alert_orderbook.css' %}">
-<link rel="stylesheet" href="{% static 'str_dashboard/css/stds_summary.css' %}"> 
 <style>
 /* 듀얼 DB 연결 모달 스타일 */
 .dual-db-modal .modal {
@@ -121,6 +115,18 @@
     border: 1px solid #4a2424;
 }
 
+/* 조회 완료 메시지 */
+.query-complete-msg {
+    padding: 15px;
+    margin-top: 20px;
+    background: #0f2314;
+    border: 1px solid #214a2c;
+    border-radius: 8px;
+    color: #4caf50;
+    text-align: center;
+    font-weight: 600;
+}
+
 @media (max-width: 768px) {
     .dual-db-container {
         flex-direction: column;
@@ -172,66 +178,11 @@
     </button>
 </div>
 
-<!-- 기존 섹션들 그대로 유지 -->
-<!-- 2분할 레이아웃: 고객 정보 & 동일_차명의심_상세 정보 -->
-<div class="split-layout-container">
-    <!-- 왼쪽: 통합 고객 정보 -->
-    <div class="split-left">
-        <div id="section_customer_unified" class="section" style="display:none;">
-            <h3>고객 정보</h3>
-            <div class="table-wrap" id="result_table_customer_unified"></div>
-        </div>
+<!-- 조회 결과 메시지 영역 -->
+<div id="query-result-container" style="display: none;">
+    <div class="query-complete-msg">
+        <span id="query-complete-text">데이터 조회가 완료되었습니다.</span>
     </div>
-    
-    <!-- 오른쪽: 동일_차명의심_상세 정보 -->
-    <div class="split-right">
-        <div id="section_duplicate_persons" class="section" style="display:none;">
-            <h3>동일_차명의심_상세 정보</h3>
-            <div class="table-wrap" id="result_table_duplicate_persons"></div>
-        </div>
-    </div>
-</div>
-
-<!-- 섹션: 법인 관련인 정보 -->
-<div id="section_corp_related" class="section" style="display:none;">
-    <h3>법인 관련인 정보</h3>
-    <div class="table-wrap" id="result_table_corp_related"></div>
-</div>
-
-<!-- 섹션: 개인 관련인 정보 (내부입출금 거래) -->
-<div id="section_person_related" class="section" style="display:none;">
-    <h3>개인 관련인 정보 (내부입출금 거래)</h3>
-    <div class="table-wrap" id="result_table_person_related"></div>
-</div>
-
-<!-- 섹션: RULE_ID_히스토리 -->
-<div id="section_rule_hist" class="section" style="display:none;">
-    <h3>RULE_ID_히스토리 탐색</h3>
-    <div class="table-wrap" id="result_table_rule_hist"></div>
-</div>
-
-<!-- 섹션: 의심거래 객관식 정보 -->
-<div id="section_objectives" class="section" style="display:none;">
-    <h3>의심거래 객관식 정보</h3>
-    <div class="table-wrap" id="result_table_objectives"></div>
-</div>
-
-<!-- 섹션: ALERT / RULE 발생 내역 -->
-<div id="section_alert_rule" class="section" style="display:none;">
-    <h3>ALERT / RULE 발생 내역</h3>
-    <div class="table-wrap" id="result_table_alert_rule"></div>
-</div>
-
-<!-- 섹션: 발생한 RULE의 정보(DISTINCT) -->
-<div id="section_rule_distinct" class="section" style="display:none;">
-    <h3>발생한 RULE의 정보(DISTINCT)</h3>
-    <div class="table-wrap" id="result_table_rule_distinct"></div>
-</div>
-
-<!-- 섹션: IP 접속 이력 -->
-<div id="section_ip_access_history" class="section collapsed" style="display:none;">
-    <h3>IP 접속 이력</h3>
-    <div class="table-wrap" id="result_table_ip_access_history"></div>
 </div>
 
 <!-- 듀얼 DB 연결 모달 -->
@@ -307,52 +258,7 @@
     <div class="toml-config-content">
         <div class="toml-config-header">
             <div class="toml-config-title">TOML 데이터 저장</div>
-            <div class="toml-config-desc">화면에 표시된 데이터를 TOML 형식으로 저장합니다.</div>
-        </div>
-        
-        <div class="toml-data-selection">
-            <div class="toml-selection-group">
-                <div class="toml-selection-title">저장할 데이터 선택</div>
-                
-                <div class="toml-checkbox-item">
-                    <input type="checkbox" id="toml-alert-info" checked disabled>
-                    <label class="toml-checkbox-label" for="toml-alert-info">Alert 정보</label>
-                    <span class="toml-checkbox-desc">필수</span>
-                </div>
-                
-                <div class="toml-checkbox-item">
-                    <input type="checkbox" id="toml-customer" checked disabled>
-                    <label class="toml-checkbox-label" for="toml-customer">고객 정보</label>
-                    <span class="toml-checkbox-desc">필수</span>
-                </div>
-                
-                <div class="toml-checkbox-item">
-                    <input type="checkbox" id="toml-rule" checked disabled>
-                    <label class="toml-checkbox-label" for="toml-rule">Rule 정보</label>
-                    <span class="toml-checkbox-desc">필수</span>
-                </div>
-                
-                <div class="toml-checkbox-item">
-                    <input type="checkbox" id="toml-orderbook" checked disabled>
-                    <label class="toml-checkbox-label" for="toml-orderbook">Orderbook 분석</label>
-                    <span class="toml-checkbox-desc">필수</span>
-                </div>
-                
-                <div class="toml-checkbox-item">
-                    <input type="checkbox" id="toml-stds" checked disabled>
-                    <label class="toml-checkbox-label" for="toml-stds">STDS_DTM 요약</label>
-                    <span class="toml-checkbox-desc">필수</span>
-                </div>
-            </div>
-            
-            <div class="toml-selection-group" style="margin-top: 15px;">
-                <div class="toml-selection-title">설정</div>
-                <div class="toml-checkbox-item">
-                    <input type="checkbox" id="toml-mask-sensitive" checked>
-                    <label class="toml-checkbox-label" for="toml-mask-sensitive">민감 정보 마스킹</label>
-                    <span class="toml-checkbox-desc">실명번호, 이메일 등</span>
-                </div>
-            </div>
+            <div class="toml-config-desc">조회된 데이터를 TOML 형식으로 저장합니다.</div>
         </div>
         
         <div class="toml-modal-actions">
@@ -362,15 +268,10 @@
     </div>
 </div>
 
-
-
 {% endblock %}
 
 {% block extra_js %}
 <script>
-// 전역 설정
-window.RULE_OBJ_MAP = {{ rule_obj_map_json|safe }};
-
 window.URLS = {
     test_oracle_connection: "{% url 'test_oracle_connection' %}",
     test_redshift_connection: "{% url 'test_redshift_connection' %}",
@@ -383,30 +284,16 @@ window.URLS = {
     query_person_related_summary: "{% url 'query_person_related_summary' %}",
     query_ip_access_history: "{% url 'query_ip_access_history' %}",
     query_redshift_orderbook: "{% url 'query_redshift_orderbook' %}",
-    get_cached_orderbook_info: "{% url 'get_cached_orderbook_info' %}",
-    clear_orderbook_cache: "{% url 'clear_orderbook_cache' %}",
     analyze_cached_orderbook: "{% url 'analyze_cached_orderbook' %}",
-    get_orderbook_summary: "{% url 'get_orderbook_summary' %}",
-    analyze_alert_orderbook: "{% url 'analyze_alert_orderbook' %}",
-    // TOML Export APIs (추가)
     prepare_toml_data: "{% url 'prepare_toml_data' %}",
     download_toml: "{% url 'download_toml' %}",
-    save_to_session: "{% url 'save_to_session' %}",
-    
-    // STDS_DTM Analysis API (추가)
-    analyze_stds_dtm_orderbook: "{% url 'analyze_stds_dtm_orderbook' %}"
+    save_to_session: "{% url 'save_to_session' %}"
 };
 </script>
-
-<!-- RULE 유틸리티 스크립트 (RULE ID별 기간 설정) -->
-<script src="{% static 'str_dashboard/js/rule_utils.js' %}"></script>
-
-<!-- 테이블 렌더러 (table.component.js를 table_renderer.js로 변경) -->
-<script src="{% static 'str_dashboard/js/table_renderer.js' %}"></script>
 
 <!-- 듀얼 DB 연결 관리 스크립트 -->
 <script src="{% static 'str_dashboard/js/dual_db_manager.js' %}"></script>
 
-<!-- 페이지 메인 로직 -->
+<!-- 페이지 메인 로직 (간소화) -->
 <script src="{% static 'str_dashboard/js/menu1_1.js' %}"></script>
 {% endblock %}
