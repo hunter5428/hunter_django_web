@@ -11,8 +11,7 @@ from decimal import Decimal
 from .sql_templates import (
     INITIAL_ALERT_QUERY,
     MONTHLY_ALERT_QUERY,
-    RULE_HISTORY_QUERY,
-    SIMILAR_RULE_COMBINATIONS_QUERY
+    RULE_HISTORY_QUERY
 )
 
 logger = logging.getLogger(__name__)
@@ -67,7 +66,7 @@ class AlertInfoExecutor:
             metadata = self._create_metadata(initial_result, monthly_result)
             
             # Step 5: Rule 히스토리 조회
-            rule_history_result = {'success': True, 'exact_match': None, 'similar_matches': []}
+            rule_history_result = {'success': True, 'exact_match': None}
             
             if metadata.get('unique_rule_ids'):
                 rule_combo = ','.join(sorted(metadata['unique_rule_ids']))
@@ -75,12 +74,6 @@ class AlertInfoExecutor:
                 
                 exact_match = self._get_exact_rule_history(rule_combo)
                 rule_history_result['exact_match'] = exact_match
-                
-                similar_matches = self._get_similar_rule_combinations(
-                    rule_combo,
-                    metadata['unique_rule_ids']
-                )
-                rule_history_result['similar_matches'] = similar_matches
             
             return {
                 'success': True,
@@ -269,6 +262,8 @@ class AlertInfoExecutor:
                     'last_occurrence': row[4] if len(row) > 4 else None,
                     'str_reported_count': row[5] if len(row) > 5 else 0,
                     'not_reported_count': row[6] if len(row) > 6 else 0,
+                    'uper_patterns': row[7] if len(row) > 7 else None,
+                    'lwer_patt[erns': row[8] if len(row) > 8 else None,
                     'columns': cols,
                     'row': self._convert_row_types(row)
                 }
@@ -279,39 +274,6 @@ class AlertInfoExecutor:
                 'success': False,
                 'occurrence_count': 0,
                 'message': str(e)
-            }
-    
-    def _get_similar_rule_combinations(self, rule_combo: str,
-                                      rule_ids: List[str]) -> Dict[str, Any]:
-        """유사한 Rule 조합 검색"""
-        try:
-            # Oracle에서 리스트 처리를 위한 변환
-            rule_ids_str = ','.join(rule_ids)
-            
-            with self.db_conn.cursor() as cursor:
-                cursor.execute(
-                    SIMILAR_RULE_COMBINATIONS_QUERY,
-                    [rule_ids_str, rule_combo]
-                )
-                rows = cursor.fetchall()
-                cols = [desc[0] for desc in cursor.description]
-                
-                converted_rows = [self._convert_row_types(row) for row in rows]
-                
-                return {
-                    'success': True,
-                    'columns': cols,
-                    'rows': converted_rows,
-                    'count': len(converted_rows)
-                }
-                
-        except Exception as e:
-            logger.error(f"[Stage 1] Error in similar rules query: {e}")
-            return {
-                'success': True,
-                'columns': [],
-                'rows': [],
-                'count': 0
             }
     
     def _convert_row_types(self, row: tuple) -> list:
