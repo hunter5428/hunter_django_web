@@ -12,6 +12,7 @@ from .database import (
     RedshiftQueryError,
     SQLQueryManager,
     execute_oracle_query,
+    execute_redshift_query,
     get_default_config,
     DEFAULT_CONFIG,
 )
@@ -25,6 +26,7 @@ __all__ = [
     'RedshiftQueryError',
     'SQLQueryManager',
     'execute_oracle_query',
+    'execute_redshift_query',
     'get_default_config',
     'DEFAULT_CONFIG',
 ]

@@ -5,8 +5,9 @@ Oracle (jaydebeapi) + Redshift (psycopg2)
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from contextlib import contextmanager
+from pathlib import Path
 
 import jaydebeapi
 import psycopg2
@@ -14,7 +15,28 @@ import psycopg2
 logger = logging.getLogger(__name__)
 
 
-# 기본 연결 설정
+# ==================== 예외 클래스 정의 ====================
+class OracleConnectionError(Exception):
+    """Oracle 연결 관련 예외"""
+    pass
+
+
+class OracleQueryError(Exception):
+    """Oracle 쿼리 실행 관련 예외"""
+    pass
+
+
+class RedshiftConnectionError(Exception):
+    """Redshift 연결 관련 예외"""
+    pass
+
+
+class RedshiftQueryError(Exception):
+    """Redshift 쿼리 실행 관련 예외"""
+    pass
+
+
+# ==================== 기본 연결 설정 ====================
 DEFAULT_CONFIG = {
     'ORACLE': {
         'HOST': '127.0.0.1',
@@ -33,6 +55,7 @@ DEFAULT_CONFIG = {
 }
 
 
+# ==================== Oracle 연결 클래스 ====================
 class OracleConnection:
     """Oracle 데이터베이스 연결 관리 클래스"""
     
@@ -76,7 +99,7 @@ class OracleConnection:
             
         except Exception as e:
             logger.exception(f"Oracle connection failed: {e}")
-            raise
+            raise OracleConnectionError(f"Oracle 연결 실패: {e}")
         finally:
             if conn:
                 try:
@@ -94,6 +117,7 @@ class OracleConnection:
             return False
 
 
+# ==================== Redshift 연결 클래스 ====================
 class RedshiftConnection:
     """Redshift 데이터베이스 연결 관리 클래스"""
     
@@ -130,7 +154,7 @@ class RedshiftConnection:
             
         except Exception as e:
             logger.exception(f"Redshift connection failed: {e}")
-            raise
+            raise RedshiftConnectionError(f"Redshift 연결 실패: {e}")
         finally:
             if conn:
                 try:
@@ -148,6 +172,136 @@ class RedshiftConnection:
                     return cursor.fetchone()[0] == 1
         except Exception:
             return False
+
+
+# ==================== SQL 쿼리 관리 ====================
+class SQLQueryManager:
+    """SQL 쿼리 파일 관리 클래스"""
+    
+    def __init__(self, base_path: Optional[Path] = None):
+        """
+        Args:
+            base_path: SQL 파일이 저장된 기본 경로
+        """
+        if base_path is None:
+            # 기본적으로 str_dashboard/queries 경로 사용
+            from django.conf import settings
+            self.base_path = Path(settings.BASE_DIR) / 'str_dashboard' / 'queries'
+        else:
+            self.base_path = Path(base_path)
+    
+    def load_query(self, filename: str) -> str:
+        """
+        SQL 쿼리 파일을 로드
+        
+        Args:
+            filename: SQL 파일명 (확장자 포함)
+            
+        Returns:
+            SQL 쿼리 문자열
+            
+        Raises:
+            FileNotFoundError: 파일이 없는 경우
+        """
+        file_path = self.base_path / filename
+        
+        if not file_path.exists():
+            raise FileNotFoundError(f"SQL file not found: {file_path}")
+        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    
+    def load_query_with_params(self, filename: str, **params) -> str:
+        """
+        SQL 쿼리 파일을 로드하고 파라미터를 치환
+        
+        Args:
+            filename: SQL 파일명
+            **params: 치환할 파라미터들
+            
+        Returns:
+            파라미터가 치환된 SQL 쿼리
+        """
+        query = self.load_query(filename)
+        
+        # 파라미터 치환 (예: {param_name} -> 실제 값)
+        for key, value in params.items():
+            query = query.replace(f'{{{key}}}', str(value))
+        
+        return query
+
+
+# ==================== 헬퍼 함수 ====================
+def execute_oracle_query(connection: OracleConnection, query: str, 
+                        params: Optional[List] = None) -> Dict[str, Any]:
+    """
+    Oracle 쿼리 실행 헬퍼 함수
+    
+    Args:
+        connection: OracleConnection 인스턴스
+        query: 실행할 SQL 쿼리
+        params: 바인드 파라미터 리스트
+        
+    Returns:
+        {'success': bool, 'columns': [...], 'rows': [...], 'message': ...}
+    """
+    try:
+        with connection.transaction() as conn:
+            with conn.cursor() as cursor:
+                if params:
+                    cursor.execute(query, params)
+                else:
+                    cursor.execute(query)
+                
+                # 결과 가져오기
+                rows = cursor.fetchall()
+                columns = [desc[0] for desc in cursor.description] if cursor.description else []
+                
+                return {
+                    'success': True,
+                    'columns': columns,
+                    'rows': rows
+                }
+                
+    except Exception as e:
+        logger.error(f"Oracle query execution failed: {e}")
+        raise OracleQueryError(f"쿼리 실행 실패: {e}")
+
+
+def execute_redshift_query(connection: RedshiftConnection, query: str,
+                          params: Optional[List] = None) -> Dict[str, Any]:
+    """
+    Redshift 쿼리 실행 헬퍼 함수
+    
+    Args:
+        connection: RedshiftConnection 인스턴스
+        query: 실행할 SQL 쿼리
+        params: 바인드 파라미터 리스트
+        
+    Returns:
+        {'success': bool, 'columns': [...], 'rows': [...], 'message': ...}
+    """
+    try:
+        with connection.transaction() as conn:
+            with conn.cursor() as cursor:
+                if params:
+                    cursor.execute(query, params)
+                else:
+                    cursor.execute(query)
+                
+                # 결과 가져오기
+                rows = cursor.fetchall()
+                columns = [desc[0] for desc in cursor.description] if cursor.description else []
+                
+                return {
+                    'success': True,
+                    'columns': columns,
+                    'rows': rows
+                }
+                
+    except Exception as e:
+        logger.error(f"Redshift query execution failed: {e}")
+        raise RedshiftQueryError(f"쿼리 실행 실패: {e}")
 
 
 def get_default_config():
