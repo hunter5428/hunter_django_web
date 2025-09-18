@@ -388,6 +388,7 @@ class CustomerExecutor:
                 return row[cols.index('KYC완료일시')]
         return None
 
+
     def _get_person_related_with_details(self, cust_id: str, 
                                         tran_start: str, tran_end: str) -> Dict[str, Any]:
         """개인 관련인 조회 및 상세 정보 포함 (종목별 거래 포함)"""
@@ -400,6 +401,7 @@ class CustomerExecutor:
                 cursor.execute(PERSON_INTERNAL_TRANSACTION_QUERY,
                             [start_dt, end_dt, cust_id])
                 transaction_rows = cursor.fetchall()
+                cols = [desc[0] for desc in cursor.description]
             
             if not transaction_rows:
                 return {'success': True, 'data': []}
@@ -407,10 +409,12 @@ class CustomerExecutor:
             # Step 2: 각 관련인의 상세 정보 조회
             related_data = []
             for tx_row in transaction_rows:
-                related_cust_id = tx_row[0]
-                deposit_amount = float(tx_row[1]) if tx_row[1] else 0
-                withdraw_amount = float(tx_row[2]) if tx_row[2] else 0
-                tx_count = tx_row[3]
+                # 컬럼 인덱스 사용하여 안전하게 데이터 추출
+                related_cust_id = tx_row[0] if len(tx_row) > 0 else None
+                name = tx_row[1] if len(tx_row) > 1 else None  # 관련인성명
+                deposit_amount = float(tx_row[2]) if len(tx_row) > 2 and tx_row[2] else 0
+                withdraw_amount = float(tx_row[3]) if len(tx_row) > 3 and tx_row[3] else 0
+                tx_count = tx_row[4] if len(tx_row) > 4 else 0
                 
                 # 관련인의 전체 고객 정보 조회
                 detail_result = self._get_customer_info(related_cust_id)
@@ -426,11 +430,17 @@ class CustomerExecutor:
                     
                     mid_value = self._get_value_by_column(detail_row, detail_cols, 'MID')
                     
+                    # SQL에서 이미 조회한 이름 사용 (detail에서 재조회보다 우선)
+                    if name:
+                        related_name = name
+                    else:
+                        related_name = self._get_value_by_column(detail_row, detail_cols, '성명')
+                    
                     related_person = {
                         'related_cust_id': related_cust_id,
                         'mid': mid_value,
                         'relation_type': '내부거래상대방',
-                        'name': self._get_value_by_column(detail_row, detail_cols, '성명'),
+                        'name': related_name,  # SQL에서 조회한 이름 우선 사용
                         'name_en': self._get_value_by_column(detail_row, detail_cols, '영문명'),
                         'birth_date': self._get_value_by_column(detail_row, detail_cols, '생년월일'),
                         'gender': self._get_value_by_column(detail_row, detail_cols, '성별'),
@@ -447,11 +457,12 @@ class CustomerExecutor:
                         }
                     }
                 else:
+                    # detail 조회 실패시에도 기본 정보는 제공
                     related_person = {
                         'related_cust_id': related_cust_id,
                         'mid': None,
                         'relation_type': '내부거래상대방',
-                        'name': None,
+                        'name': name,  # SQL에서 조회한 이름 사용
                         'name_en': None,
                         'birth_date': None,
                         'gender': None,
@@ -472,6 +483,9 @@ class CustomerExecutor:
         except Exception as e:
             logger.error(f"Error in person related query: {e}")
             return {'success': True, 'data': []}
+
+
+
 
     def _get_coin_transaction_details(self, cust_id: str, related_cust_id: str,
                                     start_dt: str, end_dt: str) -> List[Dict]:

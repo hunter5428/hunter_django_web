@@ -191,12 +191,12 @@ WITH TRANSACTION_SUMMARY AS (
 )
 SELECT 
     ts.related_cust_id AS "관련인고객ID",
-    c.CUST_KO_NM AS "관련인성명", -- <<< 컬럼명을 "관련인성명"으로 통일
+    c.CUST_KO_NM AS "관련인성명",
     ts.total_deposit_amount AS "내부입고금액",
     ts.total_withdraw_amount AS "내부출고금액",
     ts.transaction_count AS "거래횟수"
 FROM TRANSACTION_SUMMARY ts
-LEFT JOIN btcamldb_own.kyc_cust_base c ON ts.related_cust_id = c.CUST_ID -- <<< JOIN 추가
+LEFT JOIN btcamldb_own.kyc_cust_base c ON ts.related_cust_id = c.CUST_ID
 ORDER BY (ts.total_deposit_amount + ts.total_withdraw_amount) DESC
 """
 

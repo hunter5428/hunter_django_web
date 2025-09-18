@@ -192,7 +192,7 @@ class QueryManager:
             return {'success': False, 'message': str(e)}
     
 
-    
+
     def _execute_stage_4(self, mid: str):
         """Stage 4: Orderbook 조회"""
         try:
@@ -251,8 +251,19 @@ class QueryManager:
     
     def _convert_types(self, obj):
         """Decimal 등 특수 타입을 JSON 직렬화 가능한 형태로 변환"""
+        import pandas as pd
+        import numpy as np
+        
         if isinstance(obj, Decimal):
             return float(obj)
+        elif isinstance(obj, (np.integer, np.int64, np.int32)):
+            return int(obj)
+        elif isinstance(obj, (np.floating, np.float64, np.float32)):
+            return float(obj)
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        elif pd.isna(obj) or obj is pd.NaT:
+            return None
         elif isinstance(obj, dict):
             return {k: self._convert_types(v) for k, v in obj.items()}
         elif isinstance(obj, list):

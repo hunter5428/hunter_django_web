@@ -104,7 +104,6 @@ class CustomerProcessor:
 
     # str_dashboard/utils/queries/stage_2/customer_processor.py
     # _analyze_data 메서드 수정 부분
-
     def _analyze_data(self, summary: Dict[str, Any]) -> Dict[str, Any]:
         """데이터 분석"""
         analysis = {
@@ -170,7 +169,7 @@ class CustomerProcessor:
                                 # _create_unified_dataframe에서 생성되는 실제 컬럼명 사용
                                 for name_col in ['관련인성명']:  # 통합 DataFrame에서 사용하는 정확한 컬럼명
                                     if name_col in row.index and pd.notna(row[name_col]):
-                                        partner_info['관련인명'] = str(row[name_col])
+                                        partner_info['관련인성명'] = str(row[name_col])  # '관련인성명'으로 통일
                                         name_found = True
                                         break
                                 
@@ -180,11 +179,11 @@ class CustomerProcessor:
                                         # 고객ID가 있으면 사용
                                         cust_id_value = row['관련인고객ID']
                                         if pd.notna(cust_id_value):
-                                            partner_info['관련인명'] = f"고객ID: {cust_id_value}"
+                                            partner_info['관련인성명'] = f"고객ID: {cust_id_value}"  # '관련인성명'으로 통일
                                         else:
-                                            partner_info['관련인명'] = "Unknown"
+                                            partner_info['관련인성명'] = "Unknown"
                                     else:
-                                        partner_info['관련인명'] = "Unknown"
+                                        partner_info['관련인성명'] = "Unknown"
                                 
                                 # 추가 정보 (있는 경우)
                                 if '총거래금액' in row.index:
@@ -220,7 +219,6 @@ class CustomerProcessor:
             # 에러가 발생해도 부분적인 분석 결과는 반환
         
         return analysis
-        
 
 
     def _create_summary_df(self, analysis: Dict[str, Any]) -> pd.DataFrame:
@@ -264,7 +262,7 @@ class CustomerProcessor:
                     for idx, partner in enumerate(related_analysis['top_5_partners'], 1):
                         summary_data.append({
                             'Category': f'Top {idx} Partner',
-                            'Value': partner.get('관련인명', 'Unknown'),
+                            'Value': partner.get('관련인성명', 'Unknown'),  # '관련인성명'으로 통일
                             'Description': f"거래 횟수: {partner.get('거래횟수', 0)}회"
                         })
             
@@ -291,7 +289,8 @@ class CustomerProcessor:
             logger.error(f"[Stage 2] Error creating summary DataFrame: {e}")
         
         return pd.DataFrame(summary_data) if summary_data else pd.DataFrame()
-    
+
+
     def _prepare_export_data(self, execution_result: Dict[str, Any]) -> Dict[str, Any]:
         """세션 저장 및 export를 위한 데이터 준비"""
         export_data = {
