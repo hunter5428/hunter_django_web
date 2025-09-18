@@ -133,8 +133,7 @@
     }
     
     .dual-db-modal .modal {
-        max-width: 100%;
-        margin: 10px;
+        max-width: 900px;
     }
 }
 </style>
@@ -145,23 +144,19 @@
 <div class="top-row">
     <button class="btn" id="btn-open-db-modal">DB Connection</button>
     <div class="db-status-container">
-        <!-- Oracle 상태 -->
-        {% if db_status == 'ok' %}
-            <span id="oracle-status" class="badge ok">Oracle 연결</span>
-        {% else %}
-            <span id="oracle-status" class="badge">Oracle 미연결</span>
-        {% endif %}
+        <!-- Oracle 상태 (동적 업데이트) -->
+        <span id="oracle-status" class="badge {% if db_status == 'ok' %}ok{% endif %}">
+            Oracle {% if db_status == 'ok' %}연결{% else %}미연결{% endif %}
+        </span>
         
-        <!-- Redshift 상태 -->
-        {% if rs_status == 'ok' %}
-            <span id="redshift-status" class="badge ok">Redshift 연결</span>
-        {% else %}
-            <span id="redshift-status" class="badge">Redshift 미연결</span>
-        {% endif %}
+        <!-- Redshift 상태 (동적 업데이트) -->
+        <span id="redshift-status" class="badge {% if rs_status == 'ok' %}ok{% endif %}">
+            Redshift {% if rs_status == 'ok' %}연결{% else %}미연결{% endif %}
+        </span>
     </div>
 </div>
 
-<!-- 조회 영역 -->
+<!-- 조회 영역 (연결 상태 체크 추가) -->
 <div class="query-row">
     <span class="label-chip">ALERT ID</span>
     <input id="alert_id_input" type="text" class="form-input" placeholder="ALERT ID를 입력하세요">
@@ -186,6 +181,7 @@
 </div>
 
 <!-- 듀얼 DB 연결 모달 -->
+<!-- 듀얼 DB 연결 모달 (필드명 수정) -->
 <div class="modal-backdrop dual-db-modal" id="db-modal">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="db-modal-title">
         <h3 id="db-modal-title">데이터베이스 연결 설정</h3>
@@ -253,6 +249,7 @@
     </div>
 </div>
 
+
 <!-- TOML 설정 모달 -->
 <div class="toml-config-modal" id="toml-config-modal">
     <div class="toml-config-content">
@@ -289,6 +286,11 @@ window.URLS = {
     
     // 세션
     save_to_session: "{% url 'save_to_session' %}"
+};
+// 전역 연결 상태 (페이지 로드 시 설정)
+window.DB_STATUS = {
+    oracle: "{{ db_status }}",
+    redshift: "{{ rs_status }}"
 };
 </script>
 

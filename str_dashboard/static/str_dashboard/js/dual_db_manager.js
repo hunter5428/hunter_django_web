@@ -1,206 +1,249 @@
 // str_dashboard/static/str_dashboard/js/dual_db_manager.js
-// 듀얼 데이터베이스 연결 관리 - 에러 수정 버전
 
-(function() {
-    'use strict';
-
-    const $ = (sel) => document.querySelector(sel);
-    const $$ = (sel) => document.querySelectorAll(sel);  // querySelectorAll 추가
+class DualDBManager {
+    constructor() {
+        this.modal = document.getElementById('db-modal');
+        this.oracleStatus = document.getElementById('oracle-status');
+        this.redshiftStatus = document.getElementById('redshift-status');
+        this.init();
+    }
     
-    const getCookie = (name) => {
-        const value = `; ${document.cookie}`;
-        const parts = value.split(`; ${name}=`);
-        return parts.length === 2 ? decodeURIComponent(parts.pop().split(';').shift()) : undefined;
-    };
-
-    class DualDBConnectionManager {
-        constructor() {
-            this.oracleStatus = false;
-            this.redshiftStatus = false;
-            this.modal = $('#db-modal');
-            this.init();
-        }
-
-        init() {
-            // 이벤트 바인딩
-            $('#btn-open-db-modal')?.addEventListener('click', e => {
-                e.preventDefault();
-                this.openModal();
-            });
-
-            $('#btn-close-db-modal')?.addEventListener('click', e => {
-                e.preventDefault();
-                this.closeModal();
-            });
-
-            $('#btn-test-oracle')?.addEventListener('click', e => {
-                e.preventDefault();
-                this.testConnection('oracle');
-            });
-
-            $('#btn-test-redshift')?.addEventListener('click', e => {
-                e.preventDefault();
-                this.testConnection('redshift');
-            });
-
-            $('#btn-connect-all')?.addEventListener('click', e => {
-                e.preventDefault();
-                this.connectAll();
-            });
-
-            // 모달 배경 클릭
-            this.modal?.addEventListener('click', e => {
-                if (e.target === this.modal) this.closeModal();
-            });
-
-            // 초기 상태
-            this.oracleStatus = $('#oracle-status')?.classList.contains('ok') || false;
-            this.redshiftStatus = $('#redshift-status')?.classList.contains('ok') || false;
-        }
-
-        openModal() {
-            if (this.modal) {
-                this.modal.style.display = 'flex';
-                this.modal.classList.add('show');
-                // querySelectorAll을 사용하여 모든 .connection-status 요소 선택
-                const statusElements = $$('.connection-status');
-                statusElements.forEach(el => el.style.display = 'none');
-            }
-        }
-
-        closeModal() {
-            if (this.modal) {
-                this.modal.style.display = 'none';
-                this.modal.classList.remove('show');
-            }
-        }
-
-        async testConnection(type) {
-            const config = type === 'oracle' ? 
-                {
-                    fields: ['host', 'port', 'service', 'username', 'password'],
-                    url: window.URLS.test_oracle_connection,
-                    mapField: (f) => f === 'service' ? 'service_name' : f
-                } : 
-                {
-                    fields: ['host', 'port', 'dbname', 'username', 'password'],
-                    url: window.URLS.test_redshift_connection,
-                    mapField: (f) => f
-                };
-
-            const data = {};
-            const prefix = type;
-
-            for (const field of config.fields) {
-                const value = $(`#${prefix}_${field}`)?.value?.trim();
-                if (!value && field !== 'password') {
-                    alert(`${type} ${field}를 입력해주세요.`);
-                    return;
-                }
-                data[config.mapField(field)] = value || '';
-            }
-
-            const button = $(`#btn-test-${type}`);
-            const resultSpan = $(`#${type}-test-result`);
-
-            try {
-                button.disabled = true;
-                const response = await fetch(config.url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
-                    body: new URLSearchParams(data)
-                });
-
-                const result = await response.json();
-                this.showResult(resultSpan, result.success, result.message);
-                this[`${type}Status`] = result.success;
-                this.updateBadge(type, result.success);
-
-            } catch (error) {
-                this.showResult(resultSpan, false, '연결 테스트 실패');
-            } finally {
-                button.disabled = false;
-            }
-        }
-
-        async connectAll() {
-            const button = $('#btn-connect-all');
-            button.disabled = true;
-
-            const params = {};
-            ['oracle', 'redshift'].forEach(db => {
-                const fields = db === 'oracle' ? 
-                    ['host', 'port', 'service_name', 'username', 'password'] :
-                    ['host', 'port', 'dbname', 'username', 'password'];
-                
-                fields.forEach(field => {
-                    const inputField = field === 'service_name' ? 'service' : field;
-                    params[`${db}_${field}`] = $(`#${db}_${inputField}`)?.value?.trim() || '';
-                });
-            });
-
-            try {
-                const response = await fetch(window.URLS.connect_all_databases, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
-                    body: new URLSearchParams(params)
-                });
-
-                const result = await response.json();
-                
-                ['oracle', 'redshift'].forEach(db => {
-                    const status = result[`${db}_status`] === 'ok';
-                    this.showResult($(`#${db}-test-result`), status, result[`${db}_error`]);
-                    this[`${db}Status`] = status;
-                    this.updateBadge(db, status);
-                });
-
-                if (result.success) {
-                    alert('모든 데이터베이스 연결에 성공했습니다.');
-                    setTimeout(() => this.closeModal(), 1000);
-                } else {
-                    alert('일부 데이터베이스 연결에 실패했습니다.');
-                }
-
-            } catch (error) {
-                alert('연결 중 오류가 발생했습니다.');
-            } finally {
-                button.disabled = false;
-            }
-        }
-
-        showResult(element, success, message) {
-            if (!element) return;
-            element.style.display = 'inline-block';
-            element.textContent = success ? '✓ 연결 성공' : `✗ ${message || '연결 실패'}`;
-            element.className = `connection-status ${success ? 'success' : 'fail'}`;
-        }
-
-        updateBadge(type, connected) {
-            const badge = $(`#${type}-status`);
-            if (badge) {
-                badge.textContent = `${type === 'oracle' ? 'Oracle' : 'Redshift'} ${connected ? '연결' : '미연결'}`;
-                badge.classList.toggle('ok', connected);
-            }
-        }
-
-        isOracleConnected() { return this.oracleStatus; }
-        isRedshiftConnected() { return this.redshiftStatus; }
-    }
-
-    // 초기화
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            window.dualDBManager = new DualDBConnectionManager();
+    init() {
+        // 모달 열기
+        document.getElementById('btn-open-db-modal').addEventListener('click', () => {
+            this.openModal();
         });
-    } else {
-        window.dualDBManager = new DualDBConnectionManager();
+        
+        // 모달 닫기
+        document.getElementById('btn-close-db-modal').addEventListener('click', () => {
+            this.closeModal();
+        });
+        
+        // Oracle 연결 테스트
+        document.getElementById('btn-test-oracle').addEventListener('click', () => {
+            this.testOracleConnection();
+        });
+        
+        // Redshift 연결 테스트
+        document.getElementById('btn-test-redshift').addEventListener('click', () => {
+            this.testRedshiftConnection();
+        });
+        
+        // 모두 연결
+        document.getElementById('btn-connect-all').addEventListener('click', () => {
+            this.connectAll();
+        });
+        
+        // ESC 키로 모달 닫기
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.modal.style.display === 'flex') {
+                this.closeModal();
+            }
+        });
     }
+    
+    openModal() {
+        this.modal.style.display = 'flex';
+        // 기존 연결 상태 표시 초기화
+        document.getElementById('oracle-test-result').style.display = 'none';
+        document.getElementById('redshift-test-result').style.display = 'none';
+    }
+    
+    closeModal() {
+        this.modal.style.display = 'none';
+    }
+    
+    async testOracleConnection() {
+        const btn = document.getElementById('btn-test-oracle');
+        const result = document.getElementById('oracle-test-result');
+        
+        btn.disabled = true;
+        btn.textContent = '연결 테스트 중...';
+        
+        const formData = new FormData();
+        formData.append('host', document.getElementById('oracle_host').value);
+        formData.append('port', document.getElementById('oracle_port').value);
+        formData.append('service_name', document.getElementById('oracle_service').value);
+        formData.append('username', document.getElementById('oracle_username').value);
+        formData.append('password', document.getElementById('oracle_password').value);
+        formData.append('csrfmiddlewaretoken', window.APP_CONFIG.csrfToken);
+        
+        try {
+            const response = await fetch(window.URLS.test_oracle_connection, {
+                method: 'POST',
+                body: formData
+            });
+            
+            const data = await response.json();
+            
+            result.style.display = 'inline-block';
+            if (data.success) {
+                result.className = 'connection-status success';
+                result.textContent = '연결 성공';
+                this.updateOracleStatus(true);
+            } else {
+                result.className = 'connection-status fail';
+                result.textContent = data.message || '연결 실패';
+                this.updateOracleStatus(false);
+            }
+        } catch (error) {
+            result.style.display = 'inline-block';
+            result.className = 'connection-status fail';
+            result.textContent = '연결 테스트 오류';
+            console.error('Oracle connection test error:', error);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Oracle 연결 테스트';
+        }
+    }
+    
+    async testRedshiftConnection() {
+        const btn = document.getElementById('btn-test-redshift');
+        const result = document.getElementById('redshift-test-result');
+        
+        btn.disabled = true;
+        btn.textContent = '연결 테스트 중...';
+        
+        const formData = new FormData();
+        formData.append('host', document.getElementById('redshift_host').value);
+        formData.append('port', document.getElementById('redshift_port').value);
+        formData.append('dbname', document.getElementById('redshift_dbname').value);
+        formData.append('username', document.getElementById('redshift_username').value);
+        formData.append('password', document.getElementById('redshift_password').value);
+        formData.append('csrfmiddlewaretoken', window.APP_CONFIG.csrfToken);
+        
+        try {
+            const response = await fetch(window.URLS.test_redshift_connection, {
+                method: 'POST',
+                body: formData
+            });
+            
+            const data = await response.json();
+            
+            result.style.display = 'inline-block';
+            if (data.success) {
+                result.className = 'connection-status success';
+                result.textContent = '연결 성공';
+                this.updateRedshiftStatus(true);
+            } else {
+                result.className = 'connection-status fail';
+                result.textContent = data.message || '연결 실패';
+                this.updateRedshiftStatus(false);
+            }
+        } catch (error) {
+            result.style.display = 'inline-block';
+            result.className = 'connection-status fail';
+            result.textContent = '연결 테스트 오류';
+            console.error('Redshift connection test error:', error);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Redshift 연결 테스트';
+        }
+    }
+    
+    async connectAll() {
+        const btn = document.getElementById('btn-connect-all');
+        btn.disabled = true;
+        btn.textContent = '연결 중...';
+        
+        const formData = new FormData();
+        // Oracle 파라미터
+        formData.append('oracle_host', document.getElementById('oracle_host').value);
+        formData.append('oracle_port', document.getElementById('oracle_port').value);
+        formData.append('oracle_service_name', document.getElementById('oracle_service').value);
+        formData.append('oracle_username', document.getElementById('oracle_username').value);
+        formData.append('oracle_password', document.getElementById('oracle_password').value);
+        
+        // Redshift 파라미터
+        formData.append('redshift_host', document.getElementById('redshift_host').value);
+        formData.append('redshift_port', document.getElementById('redshift_port').value);
+        formData.append('redshift_dbname', document.getElementById('redshift_dbname').value);
+        formData.append('redshift_username', document.getElementById('redshift_username').value);
+        formData.append('redshift_password', document.getElementById('redshift_password').value);
+        
+        formData.append('csrfmiddlewaretoken', window.APP_CONFIG.csrfToken);
+        
+        try {
+            const response = await fetch(window.URLS.connect_all_databases, {
+                method: 'POST',
+                body: formData
+            });
+            
+            const data = await response.json();
+            
+            // Oracle 상태 업데이트
+            const oracleResult = document.getElementById('oracle-test-result');
+            oracleResult.style.display = 'inline-block';
+            if (data.oracle_status === 'ok') {
+                oracleResult.className = 'connection-status success';
+                oracleResult.textContent = '연결 성공';
+                this.updateOracleStatus(true);
+            } else {
+                oracleResult.className = 'connection-status fail';
+                oracleResult.textContent = data.oracle_error || '연결 실패';
+                this.updateOracleStatus(false);
+            }
+            
+            // Redshift 상태 업데이트
+            const redshiftResult = document.getElementById('redshift-test-result');
+            redshiftResult.style.display = 'inline-block';
+            if (data.redshift_status === 'ok') {
+                redshiftResult.className = 'connection-status success';
+                redshiftResult.textContent = '연결 성공';
+                this.updateRedshiftStatus(true);
+            } else {
+                redshiftResult.className = 'connection-status fail';
+                redshiftResult.textContent = data.redshift_error || '연결 실패';
+                this.updateRedshiftStatus(false);
+            }
+            
+            // 모두 성공시 알림 및 모달 닫기
+            if (data.success) {
+                setTimeout(() => {
+                    alert('Oracle과 Redshift 모두 연결되었습니다.');
+                    this.closeModal();
+                }, 500);
+            }
+            
+        } catch (error) {
+            console.error('Connect all error:', error);
+            alert('연결 중 오류가 발생했습니다.');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '모두 연결';
+        }
+    }
+    
+    updateOracleStatus(connected) {
+        if (this.oracleStatus) {
+            if (connected) {
+                this.oracleStatus.classList.add('ok');
+                this.oracleStatus.textContent = 'Oracle 연결';
+                window.DB_STATUS.oracle = 'ok';
+            } else {
+                this.oracleStatus.classList.remove('ok');
+                this.oracleStatus.textContent = 'Oracle 미연결';
+                window.DB_STATUS.oracle = 'need';
+            }
+        }
+    }
+    
+    updateRedshiftStatus(connected) {
+        if (this.redshiftStatus) {
+            if (connected) {
+                this.redshiftStatus.classList.add('ok');
+                this.redshiftStatus.textContent = 'Redshift 연결';
+                window.DB_STATUS.redshift = 'ok';
+            } else {
+                this.redshiftStatus.classList.remove('ok');
+                this.redshiftStatus.textContent = 'Redshift 미연결';
+                window.DB_STATUS.redshift = 'need';
+            }
+        }
+    }
+}
 
-})();
+// 페이지 로드 시 초기화
+document.addEventListener('DOMContentLoaded', () => {
+    window.dbManager = new DualDBManager();
+});

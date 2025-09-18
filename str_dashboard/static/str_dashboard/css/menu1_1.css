@@ -309,3 +309,52 @@
     width: 16px;
     height: 16px;
 }
+
+/* str_dashboard/static/str_dashboard/css/menu1_1.css */
+
+/* 연결 상태 배지 */
+.badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    background: #2a2a2a;
+    color: #888;
+    border: 1px solid #333;
+    transition: all 0.2s ease;
+}
+
+.badge.ok {
+    background: #0f2314;
+    color: #4caf50;
+    border: 1px solid #214a2c;
+}
+
+/* 모달 배경 */
+.modal-backdrop {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-backdrop[style*="display: flex"] {
+    display: flex !important;
+}
+
+/* 모달 창 */
+.modal {
+    background: #0e0e0e;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+    padding: 20px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
