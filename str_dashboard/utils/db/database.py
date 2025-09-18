@@ -20,21 +20,21 @@ from django.http import JsonResponse
 logger = logging.getLogger(__name__)
 
 
-# ==================== 기본 연결 설정 ====================
+# ==================== 기본 연결 설정 (하드코딩) ====================
 DEFAULT_CONFIG = {
     'ORACLE': {
         'HOST': '127.0.0.1',
         'PORT': '40112',
-        'SERVICE': 'PRDAMLKR.OCIAML.PRODDBA.OCIAMLPROD.ORACLEVCN.COM',
-        'USERNAME': '',
-        'PASSWORD': ''
+        'SERVICE': 'PRDAMLKR.OCIAMLPRODDBA.OCIAMLPROD.ORACLEVCN.COM',
+        'USERNAME': 'BTCAMLDB_OWN_READ',
+        'PASSWORD': ''  # 비밀번호는 보안상 빈 값으로 유지
     },
     'REDSHIFT': {
         'HOST': '127.0.0.1',
         'PORT': '40127',
         'DBNAME': 'prod',
-        'USERNAME': '',
-        'PASSWORD': ''
+        'USERNAME': 'aml_user',
+        'PASSWORD': ''  # 비밀번호는 보안상 빈 값으로 유지
     }
 }
 
@@ -69,8 +69,9 @@ class OracleConnection:
         self.jdbc_url = jdbc_url
         self.username = username
         self.password = password
-        self.driver_path = driver_path or os.getenv('ORACLE_JAR', r'C:\ojdbc11-21.5.0.0.jar')
-        self.driver_class = driver_class or os.getenv('ORACLE_DRIVER', 'oracle.jdbc.driver.OracleDriver')
+        # 드라이버 경로 하드코딩
+        self.driver_path = driver_path or r'C:\ojdbc11-21.5.0.0.jar'
+        self.driver_class = driver_class or 'oracle.jdbc.driver.OracleDriver'
     
     @classmethod
     def from_session(cls, session_data: Dict[str, Any]) -> 'OracleConnection':
@@ -145,7 +146,7 @@ class RedshiftConnection:
             'host': kwargs.get('host', DEFAULT_CONFIG['REDSHIFT']['HOST']),
             'port': kwargs.get('port', DEFAULT_CONFIG['REDSHIFT']['PORT']),
             'dbname': kwargs.get('dbname', DEFAULT_CONFIG['REDSHIFT']['DBNAME']),
-            'user': kwargs.get('username', kwargs.get('user', '')),  # username 또는 user 둘 다 지원
+            'user': kwargs.get('username', kwargs.get('user', DEFAULT_CONFIG['REDSHIFT']['USERNAME'])),
             'password': kwargs.get('password', '')
         }
         
@@ -255,12 +256,12 @@ class SQLQueryManager:
 
 # ==================== 헬퍼 함수 ====================
 def execute_oracle_query(
-    db_conn: jaydebeapi.Connection,
+    db_conn,
     sql_filename: str,
     bind_params: Dict[str, str],
     query_params: List
 ) -> Dict[str, Any]:
-    """Oracle 쿼리 실행 및 에러 처리 (수정된 시그니처)"""
+    """Oracle 쿼리 실행 및 에러 처리"""
     try:
         raw_sql = SQLQueryManager.load_sql(sql_filename)
         prepared_sql, param_count = SQLQueryManager.prepare_sql(raw_sql, bind_params)

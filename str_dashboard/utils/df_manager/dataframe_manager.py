@@ -6,10 +6,13 @@ DataFrame 기반 통합 데이터 관리 모듈
 
 import logging
 import pandas as pd
+import numpy as np
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 from django.conf import settings
+from decimal import Decimal
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +52,22 @@ class DataFrameManager:
         """
         try:
             if not columns or not rows:
-                df = pd.DataFrame(columns=columns) # 컬럼 정보 유지를 위해 빈 df 생성 방식 변경
+                df = pd.DataFrame(columns=columns if columns else [])
             else:
-                df = pd.DataFrame(rows, columns=columns)
+                # Decimal 타입을 float로 변환
+                processed_rows = []
+                for row in rows:
+                    processed_row = []
+                    for value in row:
+                        if isinstance(value, Decimal):
+                            processed_row.append(float(value))
+                        elif isinstance(value, (np.integer, np.floating)):
+                            processed_row.append(float(value))
+                        else:
+                            processed_row.append(value)
+                    processed_rows.append(processed_row)
+                
+                df = pd.DataFrame(processed_rows, columns=columns)
             
             self.datasets[name] = {
                 'dataframe': df,
@@ -84,26 +100,63 @@ class DataFrameManager:
                 'shape': df.shape,
                 'columns': list(df.columns),
                 'dtypes': {col: str(dtype) for col, dtype in df.dtypes.to_dict().items()},
-                'memory_usage': df.memory_usage(deep=True).sum(),
+                'memory_usage': int(df.memory_usage(deep=True).sum()),
                 'created_at': dataset['created_at'],
                 'metadata': dataset.get('metadata', {})
             }
         return {}
     
+    def _clean_date_string(self, date_str):
+        """날짜 문자열 정리 헬퍼 함수 - Oracle 호환"""
+        if pd.isna(date_str) or not date_str:
+            return None
+        
+        # 문자열로 변환
+        date_str = str(date_str)
+        
+        # 한글, ?, 기타 특수문자 제거
+        cleaned = re.sub(r'[^0-9\s\-:.]', '', date_str)
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        
+        if not cleaned:
+            return None
+        
+        # 날짜 부분만 추출 시도
+        date_pattern = r'(\d{4})[-/](\d{1,2})[-/](\d{1,2})'
+        date_match = re.search(date_pattern, cleaned)
+        
+        if date_match:
+            year, month, day = date_match.groups()
+            base_date = f"{year:0>4}-{month:0>2}-{day:0>2}"
+            
+            # 시간 부분 확인
+            time_pattern = r'(\d{1,2}):(\d{1,2}):(\d{1,2})'
+            time_match = re.search(time_pattern, cleaned)
+            
+            if time_match:
+                hour, minute, second = time_match.groups()
+                try:
+                    # 시간 값 유효성 확인
+                    h, m, s = int(hour), int(minute), int(second)
+                    if 0 <= h <= 23 and 0 <= m <= 59 and 0 <= s <= 59:
+                        # Oracle 호환 형식: 마이크로초 제외
+                        return f"{base_date} {hour:0>2}:{minute:0>2}:{second:0>2}"
+                except ValueError:
+                    pass
+            
+            # 시간이 없거나 유효하지 않으면 기본값
+            return f"{base_date} 00:00:00"
+        
+        return None
+    
     def process_alert_data(self, alert_data: Dict) -> Dict[str, Any]:
         """
         ALERT 데이터 처리 및 메타데이터 추출
-        
-        Returns:
-            처리된 메타데이터 (canonical_ids, rep_rule_id, cust_id, 거래기간 등)
         """
         cols = alert_data.get('columns', [])
         rows = alert_data.get('rows', [])
         
-        # DataFrame 생성 및 저장
-        self.add_dataset('alert_info', cols, rows)
-        
-        # 메타데이터 추출
+        # 메타데이터 초기화
         metadata = {
             'canonical_ids': [],
             'rep_rule_id': None,
@@ -117,6 +170,8 @@ class DataFrameManager:
             return metadata
         
         df = self.get_dataframe('alert_info')
+        if df is None:
+            return metadata
         
         # Rule ID 추출
         if 'STR_RULE_ID' in df.columns:
@@ -135,15 +190,23 @@ class DataFrameManager:
             if len(cust_ids) > 0:
                 metadata['cust_id'] = str(cust_ids[0])
         
-        # 거래 기간 추출
+        # 거래 기간 추출 (날짜 문자열 정리)
         if 'TRAN_STRT' in df.columns and 'TRAN_END' in df.columns:
-            tran_starts = pd.to_datetime(df['TRAN_STRT'].dropna(), errors='coerce')
-            tran_ends = pd.to_datetime(df['TRAN_END'].dropna(), errors='coerce')
+            # 날짜 문자열 정리 후 파싱
+            tran_start_strs = df['TRAN_STRT'].apply(self._clean_date_string).dropna()
+            tran_end_strs = df['TRAN_END'].apply(self._clean_date_string).dropna()
             
-            if not tran_starts.empty:
-                metadata['tran_start'] = tran_starts.min().strftime('%Y-%m-%d %H:%M:%S.%f')
-            if not tran_ends.empty:
-                metadata['tran_end'] = tran_ends.max().strftime('%Y-%m-%d %H:%M:%S.%f')
+            if not tran_start_strs.empty:
+                tran_starts = pd.to_datetime(tran_start_strs, errors='coerce').dropna()
+                if not tran_starts.empty:
+                    # Oracle 호환 형식 (마이크로초 제외)
+                    metadata['tran_start'] = tran_starts.min().strftime('%Y-%m-%d %H:%M:%S')
+            
+            if not tran_end_strs.empty:
+                tran_ends = pd.to_datetime(tran_end_strs, errors='coerce').dropna()
+                if not tran_ends.empty:
+                    # Oracle 호환 형식 (마이크로초 제외)
+                    metadata['tran_end'] = tran_ends.max().strftime('%Y-%m-%d %H:%M:%S')
         
         # 메타데이터 저장
         self.metadata.update(metadata)
@@ -154,8 +217,6 @@ class DataFrameManager:
         """고객 데이터 처리"""
         cols = customer_data.get('columns', [])
         rows = customer_data.get('rows', [])
-        
-        self.add_dataset('customer_info', cols, rows)
         
         metadata = {
             'customer_type': None,
@@ -169,12 +230,14 @@ class DataFrameManager:
             if '고객구분' in df.columns:
                 metadata['customer_type'] = df.iloc[0]['고객구분']
             
-            # KYC 완료일시
+            # KYC 완료일시 - 날짜 정리 적용
             if 'KYC완료일시' in df.columns:
                 kyc_dt = df.iloc[0]['KYC완료일시']
                 if pd.notna(kyc_dt):
-                    metadata['kyc_datetime'] = str(kyc_dt)
-                    self.metadata['kyc_datetime'] = str(kyc_dt)
+                    cleaned_kyc = self._clean_date_string(kyc_dt)
+                    if cleaned_kyc:
+                        metadata['kyc_datetime'] = cleaned_kyc
+                        self.metadata['kyc_datetime'] = cleaned_kyc
             
             # MID
             if 'MID' in df.columns:
@@ -190,31 +253,42 @@ class DataFrameManager:
         거래 기간 계산 (KYC 시점 고려)
         
         Returns:
-            (start_date, end_date) 튜플 (ISO 형식 문자열)
+            (start_date, end_date) 튜플 (Oracle 호환 형식)
         """
         tran_end_str = self.metadata.get('tran_end')
         if not tran_end_str:
+            logger.warning("No transaction end date found")
             return None, None
-
-        end_date = pd.to_datetime(tran_end_str)
-        # 기본값: 종료일 기준 3개월 전
-        start_date = end_date - timedelta(days=90)
         
-        # KYC 완료일시가 있으면 더 이른 날짜 사용
-        kyc_datetime_str = self.metadata.get('kyc_datetime')
-        if kyc_datetime_str:
-            kyc_date = pd.to_datetime(kyc_datetime_str)
-            if kyc_date < start_date:
-                start_date = kyc_date
-        
-        # 원래 시작일이 있으면 비교
-        tran_start_str = self.metadata.get('tran_start')
-        if tran_start_str:
-            orig_start = pd.to_datetime(tran_start_str)
-            if orig_start < start_date:
-                start_date = orig_start
-        
-        return start_date.strftime('%Y-%m-%d %H:%M:%S.%f'), end_date.strftime('%Y-%m-%d %H:%M:%S.%f')
+        try:
+            end_date = pd.to_datetime(tran_end_str)
+            if pd.isna(end_date):
+                logger.error(f"Failed to parse tran_end date: {tran_end_str}")
+                return None, None
+            
+            # 기본값: 종료일 기준 3개월 전
+            start_date = end_date - timedelta(days=90)
+            
+            # KYC 완료일시가 있으면 더 이른 날짜 사용
+            kyc_datetime_str = self.metadata.get('kyc_datetime')
+            if kyc_datetime_str:
+                kyc_date = pd.to_datetime(kyc_datetime_str, errors='coerce')
+                if not pd.isna(kyc_date) and kyc_date < start_date:
+                    start_date = kyc_date
+            
+            # 원래 시작일이 있으면 비교
+            tran_start_str = self.metadata.get('tran_start')
+            if tran_start_str:
+                orig_start = pd.to_datetime(tran_start_str, errors='coerce')
+                if not pd.isna(orig_start) and orig_start < start_date:
+                    start_date = orig_start
+            
+            # Oracle 호환 형식으로 반환 (마이크로초 제외)
+            return start_date.strftime('%Y-%m-%d %H:%M:%S'), end_date.strftime('%Y-%m-%d %H:%M:%S')
+            
+        except Exception as e:
+            logger.error(f"Error calculating transaction period: {e}")
+            return None, None
     
     def get_all_datasets_summary(self) -> Dict[str, Any]:
         """
@@ -233,7 +307,7 @@ class DataFrameManager:
             summary_info = {
                 'shape': info.get('shape'),
                 'columns': info.get('columns'),
-                'memory_usage_bytes': info.get('memory_usage'),
+                'memory_usage_bytes': info.get('memory_usage', 0),
                 'created_at': info.get('created_at'),
                 'has_data': info.get('shape', (0,0))[0] > 0
             }
@@ -258,8 +332,21 @@ class DataFrameManager:
         
         for name, dataset in self.datasets.items():
             df = dataset['dataframe']
-            # NaN, NaT 값을 None으로 변환하여 JSON 직렬화 오류 방지
-            df_cleaned = df.replace({pd.NaT: None}).where(pd.notnull(df), None)
+            
+            # NaN, NaT, Decimal 값 처리
+            df_cleaned = df.copy()
+            
+            # 각 컬럼별로 타입 확인 및 변환
+            for col in df_cleaned.columns:
+                # Decimal 타입 변환
+                if df_cleaned[col].dtype == object:
+                    df_cleaned[col] = df_cleaned[col].apply(
+                        lambda x: float(x) if isinstance(x, Decimal) else x
+                    )
+                # NaN, NaT를 None으로 변환
+                df_cleaned[col] = df_cleaned[col].replace({pd.NaT: None})
+                if pd.api.types.is_numeric_dtype(df_cleaned[col]):
+                    df_cleaned[col] = df_cleaned[col].replace({np.nan: None})
             
             export_data['datasets'][name] = {
                 'columns': list(df_cleaned.columns),
