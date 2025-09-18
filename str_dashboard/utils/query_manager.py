@@ -148,42 +148,102 @@ class QueryManager:
         return result
     
     def _execute_stage_3(self, db_conn, cust_id: str, mid: str):
-        """Stage 3: IP/거래 이력 조회 (향후 구현)"""
-        # TODO: Stage 3 구현
-        logger.info(f"Stage 3 placeholder for customer {cust_id}, MID {mid}")
+        """Stage 3: IP 접속 이력 조회"""
+        try:
+            from .queries.stage_3 import IPAccessExecutor, IPAccessProcessor
+            
+            # Stage 1, 2 데이터 가져오기
+            stage_1_metadata = self.df_manager.metadata.get('stage_1', {}).get('metadata', {})
+            stage_2_data = self.df_manager.metadata.get('stage_2', {})
+            
+            # Stage 3 Executor 실행
+            executor = IPAccessExecutor(db_conn)
+            execution_result = executor.execute(stage_1_metadata, stage_2_data)
+            
+            if not execution_result['success']:
+                logger.warning(f"Stage 3 failed: {execution_result.get('message')}")
+                return execution_result
+            
+            # Stage 3 Processor 처리
+            processor = IPAccessProcessor()
+            processed_result = processor.process(execution_result)
+            
+            if processed_result['success']:
+                # IP 접속 데이터 저장
+                ip_data = processed_result.get('export_data', {}).get('dataframes', {}).get('ip_access', {})
+                if ip_data.get('columns') and ip_data.get('rows'):
+                    self.df_manager.add_dataset(
+                        'ip_access_history',
+                        ip_data['columns'],
+                        ip_data['rows'],
+                        **processed_result.get('export_data', {}).get('metadata', {})
+                    )
+                    logger.info(f"Stage 3 completed: IP access history saved")
+                
+                # 메타데이터 업데이트
+                if 'export_data' in processed_result:
+                    self.df_manager.metadata['stage_3'] = processed_result['export_data']
+            
+            return processed_result
+            
+        except Exception as e:
+            logger.error(f"Stage 3 failed: {e}")
+            # Stage 3는 옵션이므로 실패해도 계속 진행
+            return {'success': False, 'message': str(e)}
+    
+
     
     def _execute_stage_4(self, mid: str):
         """Stage 4: Orderbook 조회"""
         try:
-            # 거래 기간 가져오기
-            tran_start = self.df_manager.metadata.get('tran_start')
-            tran_end = self.df_manager.metadata.get('tran_end')
+            from .queries.stage_4 import OrderbookExecutor, OrderbookProcessor
             
-            if not tran_start or not tran_end:
-                logger.warning("No transaction period for Orderbook query")
+            if not self.redshift_info:
+                logger.info("Redshift not connected, skipping Stage 4")
                 return
             
-            result = self.executor.execute_orderbook_query(
-                self.redshift_info,
-                mid,
-                tran_start,
-                tran_end
-            )
+            # Stage 1, 2 데이터 가져오기
+            stage_1_data = self.df_manager.metadata.get('stage_1', {})
+            stage_2_data = self.df_manager.metadata.get('stage_2', {})
             
-            if result['success'] and result.get('rows'):
-                self.df_manager.add_dataset(
-                    'orderbook',
-                    result['columns'],
-                    result['rows'],
-                    user_id=mid,
-                    start_date=tran_start,
-                    end_date=tran_end
-                )
+            # Redshift 연결
+            from .db import RedshiftConnection
+            rs_conn = RedshiftConnection.from_session(self.redshift_info)
+            
+            # Stage 4 Executor 실행
+            executor = OrderbookExecutor(rs_conn)
+            execution_result = executor.execute(stage_1_data, stage_2_data)
+            
+            if not execution_result['success']:
+                logger.warning(f"Stage 4 failed: {execution_result.get('message')}")
+                return
+            
+            # Stage 4 Processor 처리
+            processor = OrderbookProcessor()
+            processed_result = processor.process(execution_result)
+            
+            if processed_result['success']:
+                # Orderbook 데이터 저장
+                orderbook_data = processed_result.get('export_data', {}).get('dataframes', {}).get('orderbook', {})
+                if orderbook_data.get('columns') and orderbook_data.get('rows'):
+                    self.df_manager.add_dataset(
+                        'orderbook',
+                        orderbook_data['columns'],
+                        orderbook_data['rows'],
+                        **processed_result.get('export_data', {}).get('metadata', {})
+                    )
+                    logger.info(f"Stage 4 completed: Orderbook data saved")
                 
+                # 메타데이터 업데이트
+                if 'export_data' in processed_result:
+                    self.df_manager.metadata['stage_4'] = processed_result['export_data']
+                    
         except Exception as e:
             logger.error(f"Stage 4 (Orderbook) failed: {e}")
-            # Orderbook은 옵션이므로 실패해도 계속 진행
-    
+            # Orderbook은 옵션이므로 실패해도 계속 진행    
+
+
+
     def _prepare_export_data(self) -> Dict[str, Any]:
         """DataFrame Manager 데이터를 export 형식으로 변환"""
         export_data = self.df_manager.export_to_dict()

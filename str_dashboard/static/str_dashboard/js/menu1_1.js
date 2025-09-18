@@ -121,6 +121,7 @@
             this.searchBtn = $('#alert_id_search_btn');
             this.inputField = $('#alert_id_input');
             this.isSearching = false;
+            this.currentTimerId = null;  // 현재 타이머 ID 저장
             this.init();
         }
 
@@ -191,8 +192,20 @@
             this.isSearching = true;
             this.setLoading(true);
 
+            // 이전 타이머가 있으면 종료
+            if (this.currentTimerId) {
+                try {
+                    console.timeEnd(this.currentTimerId);
+                } catch(e) {
+                    // 타이머가 이미 종료된 경우 무시
+                }
+            }
+
+            // 고유한 타이머 ID 생성
+            this.currentTimerId = `query_${alertId}_${Date.now()}`;
+            
             console.group(`%c🔍 ALERT ID: ${alertId} 통합 조회 시작`, 'color: #4fc3f7; font-size: 16px; font-weight: bold;');
-            console.time('통합 조회 시간');
+            console.time(this.currentTimerId);
 
             try {
                 // 이전 결과 숨기기
@@ -239,7 +252,7 @@
                     tomlBtn.classList.add('fade-in');
                 }
                 
-                console.timeEnd('통합 조회 시간');
+                console.timeEnd(this.currentTimerId);
                 console.log('%c✅ 통합 데이터 조회 완료', 'color: #4caf50; font-size: 14px; font-weight: bold;');
                 
                 // 요약 정보 출력
@@ -287,6 +300,7 @@
                 console.groupEnd();
                 this.isSearching = false;
                 this.setLoading(false);
+                this.currentTimerId = null;  // 타이머 ID 초기화
             }
         }
 
