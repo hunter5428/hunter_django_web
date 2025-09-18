@@ -1,22 +1,15 @@
 # str_dashboard/utils/query_manager.py
 """
-쿼리 실행 및 데이터 처리를 관리하는 모듈
-각 쿼리별 로직을 분리하여 관리
+통합 쿼리 관리 모듈
+Stage 기반 실행을 중앙에서 관리
 """
 
-import os
 import logging
-from typing import Dict, Any, List, Optional, Tuple
-from pathlib import Path
-from django.conf import settings
-import pandas as pd
+from typing import Dict, Any, Optional
 from decimal import Decimal
-from datetime import timedelta
-import re
 
-from .db import OracleConnection, RedshiftConnection
+from .db import OracleConnection
 from .df_manager import DataFrameManager
-from .ledger_manager import OrderbookAnalyzer
 from .query_executor import QueryExecutor
 
 logger = logging.getLogger(__name__)
@@ -24,8 +17,7 @@ logger = logging.getLogger(__name__)
 
 class QueryManager:
     """
-    통합 쿼리 관리 클래스
-    모든 쿼리 실행 로직을 중앙에서 관리
+    Stage 기반 통합 쿼리 관리 클래스
     """
     
     def __init__(self, oracle_info: Dict[str, Any], redshift_info: Optional[Dict[str, Any]] = None):
@@ -36,10 +28,7 @@ class QueryManager:
         
     def execute_all_queries(self, alert_id: str) -> Dict[str, Any]:
         """
-        ALERT ID에 대한 모든 쿼리 실행
-        
-        Returns:
-            실행 결과 딕셔너리
+        모든 Stage를 순차적으로 실행
         """
         self.df_manager.set_alert_id(alert_id)
         oracle_conn = OracleConnection.from_session(self.oracle_info)
@@ -48,23 +37,36 @@ class QueryManager:
             with oracle_conn.transaction() as db_conn:
                 logger.info(f"Starting integrated query for ALERT ID: {alert_id}")
                 
-                # 1단계: ALERT 정보 조회
-                alert_metadata = self._query_alert_info(db_conn, alert_id)
-                if not alert_metadata:
-                    return {'success': False, 'message': 'ALERT 정보 조회 실패'}
+                # Stage 1: ALERT 정보 조회
+                stage_1_result = self._execute_stage_1(db_conn, alert_id)
+                if not stage_1_result['success']:
+                    return stage_1_result
                 
-                if not alert_metadata.get('cust_id'):
-                    return {'success': False, 'message': 'ALERT에 연결된 고객 정보가 없습니다.'}
+                # Stage 1에서 고객 ID 추출
+                cust_id = stage_1_result['metadata'].get('cust_id')
+                if not cust_id:
+                    return {
+                        'success': False,
+                        'message': 'ALERT에 연결된 고객 정보가 없습니다.'
+                    }
                 
-                # 2단계: 고객 정보 조회
-                customer_metadata = self._query_customer_info(db_conn, alert_metadata['cust_id'])
-                if not customer_metadata:
-                    return {'success': False, 'message': '고객 정보 조회 실패'}
+                # Stage 2: 고객 및 관련인 정보 조회
+                stage_2_result = self._execute_stage_2(db_conn, cust_id)
+                if not stage_2_result['success']:
+                    return stage_2_result
                 
-                # 3단계: 추가 쿼리 실행
-                self._execute_additional_queries(db_conn, alert_metadata, customer_metadata)
+                # Stage 3: IP/거래 이력 (필요시)
+                mid = stage_2_result['metadata'].get('mid')
+                customer_type = stage_2_result['metadata'].get('customer_type')
                 
-                # 4단계: 결과 정리
+                if mid and customer_type == 'PERSON':
+                    self._execute_stage_3(db_conn, cust_id, mid)
+                
+                # Stage 4: Orderbook (Redshift - 옵션)
+                if self.redshift_info and mid:
+                    self._execute_stage_4(mid)
+                
+                # 최종 결과 정리
                 summary = self.df_manager.get_all_datasets_summary()
                 df_manager_data = self._prepare_export_data()
                 
@@ -74,172 +76,125 @@ class QueryManager:
                     'success': True,
                     'summary': summary,
                     'df_manager_data': df_manager_data,
-                    'dataset_count': len(summary['datasets'])
+                    'dataset_count': len(summary['datasets']),
+                    'alert_id': alert_id
                 }
                 
         except Exception as e:
             logger.exception(f"Error in execute_all_queries: {e}")
-            return {'success': False, 'message': str(e)}
+            return {
+                'success': False,
+                'message': str(e)
+            }
     
-    def _query_alert_info(self, db_conn, alert_id: str) -> Optional[Dict[str, Any]]:
-        """ALERT 정보 조회"""
-        result = self.executor.execute_alert_info_query(db_conn, alert_id)
-        if not result.get('success'):
-            logger.error(f"Alert info query failed: {result.get('message')}")
-            return None
+    def _execute_stage_1(self, db_conn, alert_id: str) -> Dict[str, Any]:
+        """Stage 1 실행 및 DataFrame 저장"""
+        result = self.executor.execute_stage_1(db_conn, alert_id)
         
-        self.df_manager.add_dataset('alert_info', result['columns'], result['rows'])
-        return self.df_manager.process_alert_data(result)
-    
-    def _query_customer_info(self, db_conn, cust_id: str) -> Optional[Dict[str, Any]]:
-        """고객 정보 조회"""
-        result = self.executor.execute_customer_info_query(db_conn, cust_id)
-        if not result.get('success'):
-            logger.error(f"Customer info query failed: {result.get('message')}")
-            return None
-        
-        self.df_manager.add_dataset('customer_info', result['columns'], result['rows'])
-        return self.df_manager.process_customer_data(result)
-    
-    def _execute_additional_queries(self, db_conn, alert_metadata: Dict, customer_metadata: Dict):
-        """추가 쿼리들 실행"""
-        cust_id = alert_metadata.get('cust_id')
-        customer_type = customer_metadata.get('customer_type')
-        
-        # Rule 히스토리
-        self._query_rule_history(alert_metadata)
-        
-        # 법인/개인별 분기 처리
-        if customer_type == '법인':
-            self._query_corp_related(db_conn, cust_id)
-        else:  # 개인
-            self._query_person_related(db_conn, cust_id, customer_metadata)
-        
-        # 중복 회원 조회
-        self._query_duplicate_persons(db_conn, cust_id)
-    
-    def _query_rule_history(self, alert_metadata: Dict):
-        """Rule 히스토리 조회"""
-        if not alert_metadata.get('canonical_ids'):
-            return
-        
-        try:
-            # Rule 히스토리 조회 로직
-            from ..queries.rule_historic_search import fetch_df_result_0, aggregate_by_rule_id_list
-            
-            df0 = fetch_df_result_0(
-                jdbc_url=self.oracle_info['jdbc_url'],
-                driver_class=self.oracle_info.get('driver_class', 'oracle.jdbc.driver.OracleDriver'),
-                driver_path=self.oracle_info.get('driver_path', r'C:\ojdbc11-21.5.0.0.jar'),
-                username=self.oracle_info['username'],
-                password=self.oracle_info['password']
+        if result['success']:
+            # DataFrame Manager에 저장
+            self.df_manager.add_dataset(
+                'alert_info',
+                result['columns'],
+                result['rows'],
+                **result.get('metadata', {})
             )
-            df1 = aggregate_by_rule_id_list(df0)
-            rule_key = ','.join(sorted(alert_metadata['canonical_ids']))
-            matching_rows = df1[df1["STR_RULE_ID_LIST"] == rule_key]
             
-            self.df_manager.add_dataset('rule_history', list(matching_rows.columns), matching_rows.values.tolist())
-        except Exception as e:
-            logger.error(f"Rule history query failed: {e}")
-    
-    def _query_corp_related(self, db_conn, cust_id: str):
-        """법인 관련인 조회"""
-        result = self.executor.execute_corp_related_query(db_conn, cust_id)
-        if result.get('success'):
-            self.df_manager.add_dataset('corp_related', result['columns'], result['rows'])
-    
-    def _query_person_related(self, db_conn, cust_id: str, customer_metadata: Dict):
-        """개인 관련 정보 조회"""
-        tran_start, tran_end = self.df_manager.calculate_transaction_period()
-        if not tran_start or not tran_end:
-            logger.warning("Transaction period not found, skipping person related queries")
-            return
+            # 메타데이터 업데이트
+            if 'stage_data' in result:
+                self.df_manager.metadata['stage_1'] = result['stage_data']
+                self.df_manager.metadata.update(result['metadata'])
         
-        # 개인 관련인
-        result = self.executor.execute_person_related_query(db_conn, cust_id, tran_start, tran_end)
-        if result.get('success'):
-            self.df_manager.add_dataset('person_related', result['columns'], result['rows'])
+        return result
+    
+    def _execute_stage_2(self, db_conn, cust_id: str) -> Dict[str, Any]:
+        """Stage 2 실행 및 DataFrame 저장"""
+        result = self.executor.execute_stage_2(db_conn, cust_id)
         
-        # IP 이력 및 Orderbook 조회
-        mid = customer_metadata.get('mid')
-        if mid:
-            # IP 이력
-            result = self.executor.execute_ip_history_query(db_conn, mid, tran_start, tran_end)
-            if result.get('success'):
-                self.df_manager.add_dataset('ip_history', result['columns'], result['rows'])
+        if result['success']:
+            # 고객 정보 저장
+            self.df_manager.add_dataset(
+                'customer_info',
+                result['columns'],
+                result['rows'],
+                **result.get('metadata', {})
+            )
             
-            # Redshift Orderbook
-            if self.redshift_info:
-                self._query_orderbook(mid, tran_start, tran_end)
+            # 관련인 정보 저장
+            if 'related_persons' in result:
+                related = result['related_persons']
+                if related.get('columns') and related.get('rows'):
+                    self.df_manager.add_dataset(
+                        'related_persons',
+                        related['columns'],
+                        related['rows']
+                    )
+            
+            # 중복 의심 회원 저장
+            if 'duplicate_persons' in result:
+                duplicate = result['duplicate_persons']
+                if duplicate.get('columns') and duplicate.get('rows'):
+                    self.df_manager.add_dataset(
+                        'duplicate_persons',
+                        duplicate['columns'],
+                        duplicate['rows']
+                    )
+            
+            # 메타데이터 업데이트
+            if 'stage_data' in result:
+                self.df_manager.metadata['stage_2'] = result['stage_data']
+                self.df_manager.metadata.update(result['metadata'])
+        
+        return result
     
-    def _query_orderbook(self, mem_id: str, start_date: str, end_date: str):
-        """Redshift Orderbook 조회"""
+    def _execute_stage_3(self, db_conn, cust_id: str, mid: str):
+        """Stage 3: IP/거래 이력 조회 (향후 구현)"""
+        # TODO: Stage 3 구현
+        logger.info(f"Stage 3 placeholder for customer {cust_id}, MID {mid}")
+    
+    def _execute_stage_4(self, mid: str):
+        """Stage 4: Orderbook 조회"""
         try:
+            # 거래 기간 가져오기
+            tran_start = self.df_manager.metadata.get('tran_start')
+            tran_end = self.df_manager.metadata.get('tran_end')
+            
+            if not tran_start or not tran_end:
+                logger.warning("No transaction period for Orderbook query")
+                return
+            
             result = self.executor.execute_orderbook_query(
-                self.redshift_info, mem_id, start_date, end_date
+                self.redshift_info,
+                mid,
+                tran_start,
+                tran_end
             )
-            if result.get('success'):
-                self.df_manager.add_dataset('orderbook', result['columns'], result['rows'],
-                                          user_id=mem_id,
-                                          start_date=start_date,
-                                          end_date=end_date)
+            
+            if result['success'] and result.get('rows'):
+                self.df_manager.add_dataset(
+                    'orderbook',
+                    result['columns'],
+                    result['rows'],
+                    user_id=mid,
+                    start_date=tran_start,
+                    end_date=tran_end
+                )
                 
-                # 분석 실행
-                df = self.df_manager.get_dataframe('orderbook')
-                if df is not None and not df.empty:
-                    analyzer = OrderbookAnalyzer(df)
-                    analyzer.analyze()
-                    analysis_result = {
-                        'text_summary': analyzer.generate_text_summary(),
-                        'patterns': analyzer.get_pattern_analysis(),
-                        'daily_summary': analyzer.get_daily_summary().to_dict('records')
-                    }
-                    self.df_manager.add_dataset('orderbook_analysis',
-                                              ['analysis_type', 'data'],
-                                              [['summary', analysis_result]])
         except Exception as e:
-            logger.error(f"Orderbook query failed: {e}")
-    
-    def _query_duplicate_persons(self, db_conn, cust_id: str):
-        """중복 회원 조회"""
-        customer_df = self.df_manager.get_dataframe('customer_info')
-        if customer_df is None or customer_df.empty:
-            return
-        
-        dup_params = self._extract_duplicate_params(customer_df.iloc[0])
-        if not dup_params:
-            return
-        
-        result = self.executor.execute_duplicate_query(db_conn, cust_id, dup_params)
-        if result.get('success'):
-            self.df_manager.add_dataset('duplicate_persons', result['columns'], result['rows'])
-    
-    def _extract_duplicate_params(self, customer_row: pd.Series) -> Dict[str, Any]:
-        """고객 정보에서 중복 검색 파라미터 추출"""
-        phone = str(customer_row.get('연락처', ''))
-        return {
-            'address': str(customer_row.get('거주지주소', '')),
-            'detail_address': str(customer_row.get('거주지상세주소', '')),
-            'workplace_name': str(customer_row.get('직장명', '')),
-            'workplace_address': str(customer_row.get('직장주소', '')),
-            'workplace_detail_address': str(customer_row.get('직장상세주소', '')),
-            'phone_suffix': phone[-4:] if len(phone) >= 4 else '',
-        }
+            logger.error(f"Stage 4 (Orderbook) failed: {e}")
+            # Orderbook은 옵션이므로 실패해도 계속 진행
     
     def _prepare_export_data(self) -> Dict[str, Any]:
-        """
-        DataFrame Manager 데이터를 JSON 직렬화 가능한 형태로 변환
-        Decimal 타입 처리 포함
-        """
+        """DataFrame Manager 데이터를 export 형식으로 변환"""
         export_data = self.df_manager.export_to_dict()
-        return self._convert_decimals_to_float(export_data)
+        return self._convert_types(export_data)
     
-    def _convert_decimals_to_float(self, obj):
-        """Decimal 타입을 float로 변환 (재귀적)"""
+    def _convert_types(self, obj):
+        """Decimal 등 특수 타입을 JSON 직렬화 가능한 형태로 변환"""
         if isinstance(obj, Decimal):
             return float(obj)
         elif isinstance(obj, dict):
-            return {k: self._convert_decimals_to_float(v) for k, v in obj.items()}
+            return {k: self._convert_types(v) for k, v in obj.items()}
         elif isinstance(obj, list):
-            return [self._convert_decimals_to_float(item) for item in obj]
+            return [self._convert_types(item) for item in obj]
         return obj
