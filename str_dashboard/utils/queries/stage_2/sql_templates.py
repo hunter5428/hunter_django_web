@@ -200,7 +200,7 @@ LEFT JOIN btcamldb_own.kyc_cust_base c ON ts.related_cust_id = c.CUST_ID
 ORDER BY (ts.total_deposit_amount + ts.total_withdraw_amount) DESC
 """
 
-# 종목별 거래 상세 조회 (새로 추가)
+# 종목별 거래 상세 조회 쿼리 추가 (누락된 부분)
 PERSON_TRANSACTION_DETAIL_QUERY = """
 SELECT 
     c1_0.cntp_cust_id AS "관련인고객ID",

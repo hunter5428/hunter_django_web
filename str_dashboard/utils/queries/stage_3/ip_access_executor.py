@@ -91,7 +91,8 @@ class IPAccessExecutor:
             
             return {
                 'success': True,
-                'unified_ip_data': unified_result,
+                'unified_ip_data': unified_result,  # 키 이름 수정
+                'ip_access_data': unified_result,   # 호환성을 위해 양쪽 다 제공
                 'summary': {
                     'period': f'{clean_start} ~ {clean_end}',
                     'total_persons': len(set([row[0] for row in all_ip_data])) if all_ip_data else 0,

@@ -248,7 +248,7 @@ class OrderbookExecutor:
             logger.error(f"[Stage 4] Error extracting MID list: {e}")
         
         return mid_list
-    
+        
     def _query_orderbook(self, start_date: str, end_date: str, 
                         mid_list: List[str]) -> Dict[str, Any]:
         """Orderbook 조회"""
@@ -259,8 +259,58 @@ class OrderbookExecutor:
             
             with self.rs_conn.transaction() as conn:
                 with conn.cursor() as cursor:
-                    # IN 절을 위한 튜플 생성
-                    cursor.execute(ORDERBOOK_QUERY, (start_dt, end_dt, tuple(mid_list)))
+                    # MID 리스트 처리 - 각각 별도 파라미터로
+                    if len(mid_list) == 1:
+                        # 단일 MID
+                        query = """
+                        SELECT 
+                            user_id,
+                            market_nm,
+                            ticker_nm,
+                            TO_CHAR(trade_date, 'YYYY-MM-DD') AS trade_date,
+                            TO_CHAR(trade_date, 'HH24:MI:SS') AS trade_time,
+                            trade_quantity,
+                            trade_price,
+                            trade_amount,
+                            trade_amount_krw,
+                            trans_from,
+                            trans_to,
+                            trans_cat,
+                            balance_market,
+                            balance_asset
+                        FROM fms.BDM_VRTL_AST_TRAN_LEDG_FACT 
+                        WHERE trade_date >= %s
+                            AND trade_date < %s
+                            AND user_id = %s
+                        ORDER BY trade_date ASC
+                        """
+                        cursor.execute(query, (start_dt, end_dt, mid_list[0]))
+                    else:
+                        # 복수 MID - IN 절 사용
+                        placeholders = ','.join(['%s'] * len(mid_list))
+                        query = f"""
+                        SELECT 
+                            user_id,
+                            market_nm,
+                            ticker_nm,
+                            TO_CHAR(trade_date, 'YYYY-MM-DD') AS trade_date,
+                            TO_CHAR(trade_date, 'HH24:MI:SS') AS trade_time,
+                            trade_quantity,
+                            trade_price,
+                            trade_amount,
+                            trade_amount_krw,
+                            trans_from,
+                            trans_to,
+                            trans_cat,
+                            balance_market,
+                            balance_asset
+                        FROM fms.BDM_VRTL_AST_TRAN_LEDG_FACT 
+                        WHERE trade_date >= %s
+                            AND trade_date < %s
+                            AND user_id IN ({placeholders})
+                        ORDER BY trade_date ASC
+                        """
+                        cursor.execute(query, [start_dt, end_dt] + mid_list)
                     
                     if not cursor.description:
                         return {'success': True, 'columns': [], 'rows': []}
@@ -284,3 +334,6 @@ class OrderbookExecutor:
                 'rows': [],
                 'error': str(e)
             }
+
+
+
