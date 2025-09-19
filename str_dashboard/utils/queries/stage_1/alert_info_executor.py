@@ -153,32 +153,24 @@ class AlertInfoExecutor:
         return year_month, cust_id
     
     def _get_monthly_data(self, alert_id: str, year_month: str, cust_id: str) -> Dict[str, Any]:
-        """월별 ALERT 데이터 조회"""
+        """원본 SQL 로직 사용 - TARGET_INFO CTE를 통한 조회"""
         try:
-            # 월의 시작일과 종료일 계산
-            start_date = f"{year_month}-01"
-            
-            # 다음 달 계산
-            year = int(year_month[:4])
-            month = int(year_month[5:7])
-            
-            if month == 12:
-                next_month = f"{year + 1:04d}-01-01"
-            else:
-                next_month = f"{year:04d}-{month + 1:02d}-01"
-            
             with self.db_conn.cursor() as cursor:
-                cursor.execute(
-                    MONTHLY_ALERT_QUERY,
-                    [alert_id, start_date, next_month, cust_id]
-                )
+                # 원본 SQL과 동일하게 alert_id만 사용
+                cursor.execute(MONTHLY_ALERT_QUERY, {'alert_id': alert_id})
                 rows = cursor.fetchall()
                 cols = [desc[0] for desc in cursor.description]
                 
-                # 타입 변환
                 converted_rows = [self._convert_row_types(row) for row in rows]
                 
                 logger.info(f"[Stage 1] Monthly query found {len(rows)} records")
+                
+                # IS_TARGET_ALERT 플래그 추가
+                if 'STR_ALERT_ID' in cols:
+                    alert_idx = cols.index('STR_ALERT_ID')
+                    cols.append('IS_TARGET_ALERT')
+                    for row in converted_rows:
+                        row.append('Y' if row[alert_idx] == alert_id else 'N')
                 
                 return {
                     'success': True,

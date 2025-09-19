@@ -4,7 +4,7 @@ Stage 2 SQL 쿼리 템플릿
 고객 정보 및 관련인 정보 조회
 """
 
-# ==================== 고객 기본 정보 (기존 유지) ====================
+# ==================== 고객 기본 정보 ====================
 CUSTOMER_UNIFIED_INFO_QUERY = """
 SELECT 
     -- 기본 식별 정보
@@ -108,17 +108,17 @@ LEFT JOIN (
     FROM BTCAMLDB_OWN.KYC_CORP_EXAM_LIST ce_inner
 ) ce ON ce.CUST_ID = c.CUST_ID AND ce.rn = 1
 LEFT JOIN BTCAMLDB_OWN.SM_CD_DTL bz ON bz.AML_DTL_CD = ce.BZTYP_TYPE_CD AND bz.AML_COMN_CD = 'BZTYP_TYPE_CD'
-WHERE c.CUST_ID = ?
+WHERE c.CUST_ID = :cust_id
 """
 
-# ==================== 법인 관련인 (기존 유지) ====================
+# ==================== 법인 관련인 ====================
 CORP_RELATED_PERSONS_QUERY = """
 WITH LATEST_KYC AS (
     SELECT 
         CUST_ID,
         MAX(KYC_EXAM_STRT_DTM) AS LATEST_KYC_DTM
     FROM BTCAMLDB_OWN.KYC_CORP_EXAM_LIST
-    WHERE CUST_ID = ?
+    WHERE CUST_ID = :cust_id
     GROUP BY CUST_ID
 ),
 RELATED_PERSONS AS (
@@ -172,7 +172,7 @@ ORDER BY
     rp.real_ownr_stke_rate DESC NULLS LAST
 """
 
-# ==================== 개인 내부거래 상대방 조회 (개선) ====================
+# ==================== 개인 내부거래 상대방 (DM 테이블 사용) ====================
 PERSON_INTERNAL_TRANSACTION_QUERY = """
 WITH TRANSACTION_SUMMARY AS (
     SELECT 
@@ -181,9 +181,9 @@ WITH TRANSACTION_SUMMARY AS (
         SUM(CASE WHEN c1_0.strls_type_cd = '02' THEN c1_0.coin_tran_amt * c1_0.coin_tran_qty ELSE 0 END) AS total_withdraw_amount,
         COUNT(*) AS transaction_count
     FROM btcamldb_own.dm_coin_tran_list c1_0
-    WHERE c1_0.coin_tran_dtm BETWEEN TO_TIMESTAMP(?, 'YYYY-MM-DD HH24:MI:SS.FF9') 
-                                  AND TO_TIMESTAMP(?, 'YYYY-MM-DD HH24:MI:SS.FF9')
-      AND c1_0.cust_id = ?
+    WHERE c1_0.coin_tran_dtm BETWEEN TO_TIMESTAMP(:start_date, 'YYYY-MM-DD HH24:MI:SS.FF9') 
+                                  AND TO_TIMESTAMP(:end_date, 'YYYY-MM-DD HH24:MI:SS.FF9')
+      AND c1_0.cust_id = :cust_id
       AND c1_0.coin_ist_rels_type_cd = 'IN'
     GROUP BY c1_0.cntp_cust_id
     ORDER BY (total_deposit_amount + total_withdraw_amount) DESC
@@ -191,16 +191,16 @@ WITH TRANSACTION_SUMMARY AS (
 )
 SELECT 
     ts.related_cust_id AS "관련인고객ID",
-    c.CUST_KO_NM AS "관련인성명",
+    dc.CUST_KO_NM AS "관련인성명",  -- DM_CUST_BASE 사용
     ts.total_deposit_amount AS "내부입고금액",
     ts.total_withdraw_amount AS "내부출고금액",
     ts.transaction_count AS "거래횟수"
 FROM TRANSACTION_SUMMARY ts
-LEFT JOIN btcamldb_own.kyc_cust_base c ON ts.related_cust_id = c.CUST_ID
+LEFT JOIN btcamldb_own.dm_cust_base dc ON ts.related_cust_id = dc.CUST_ID
 ORDER BY (ts.total_deposit_amount + ts.total_withdraw_amount) DESC
 """
 
-# 종목별 거래 상세 조회 쿼리 추가 (누락된 부분)
+# ==================== 종목별 거래 상세 (DM 테이블 사용) ====================
 PERSON_TRANSACTION_DETAIL_QUERY = """
 SELECT 
     c1_0.cntp_cust_id AS "관련인고객ID",
@@ -216,10 +216,10 @@ SELECT
 FROM btcamldb_own.dm_coin_tran_list c1_0
 LEFT JOIN btcamldb_own.dm_coin_base c4_0 
     ON c1_0.coin_type_cd = c4_0.coin_type_cd
-WHERE c1_0.cust_id = ?
-  AND c1_0.cntp_cust_id = ?
-  AND c1_0.coin_tran_dtm BETWEEN TO_TIMESTAMP(?, 'YYYY-MM-DD HH24:MI:SS.FF9') 
-                              AND TO_TIMESTAMP(?, 'YYYY-MM-DD HH24:MI:SS.FF9')
+WHERE c1_0.cust_id = :cust_id
+  AND c1_0.cntp_cust_id = :related_cust_id
+  AND c1_0.coin_tran_dtm BETWEEN TO_TIMESTAMP(:start_date, 'YYYY-MM-DD HH24:MI:SS.FF9') 
+                              AND TO_TIMESTAMP(:end_date, 'YYYY-MM-DD HH24:MI:SS.FF9')
   AND c1_0.coin_ist_rels_type_cd = 'IN'
 GROUP BY 
     c1_0.cntp_cust_id,
@@ -228,32 +228,38 @@ GROUP BY
 ORDER BY "거래금액" DESC
 """
 
+# ==================== 중복 의심 회원 (바인드 변수 수정) ====================
 DUPLICATE_PERSONS_QUERY = """
-
 WITH DUPLICATE_CANDIDATES AS (
+    -- 주소 매칭
     SELECT CUST_ID, 'ADDRESS' AS MATCH_TYPE
     FROM BTCAMLDB_OWN.KYC_CUST_BASE
-    WHERE CUST_ID != :current_cust_id
+    WHERE CUST_ID != :cust_id
       AND :address IS NOT NULL
+      AND :detail_address IS NOT NULL
       AND CUST_ADDR = :address
       AND CUST_DTL_ADDR = :detail_address
     
     UNION ALL
     
+    -- 직장명 매칭
     SELECT CUST_ID, 'WORKPLACE_NAME' AS MATCH_TYPE
     FROM BTCAMLDB_OWN.KYC_CUST_BASE
-    WHERE CUST_ID != :current_cust_id_wpn
+    WHERE CUST_ID != :cust_id
       AND :workplace_name IS NOT NULL
       AND WPLC_NM IS NOT NULL
       AND WPLC_NM = :workplace_name
     
     UNION ALL
     
+    -- 직장주소 매칭
     SELECT CUST_ID, 'WORKPLACE_ADDRESS' AS MATCH_TYPE
     FROM BTCAMLDB_OWN.KYC_CUST_BASE
-    WHERE CUST_ID != :current_cust_id_wpa
+    WHERE CUST_ID != :cust_id
       AND :workplace_address IS NOT NULL
+      AND :workplace_detail_address IS NOT NULL
       AND WPLC_ADDR IS NOT NULL
+      AND WPLC_DTL_ADDR IS NOT NULL
       AND WPLC_ADDR = :workplace_address
       AND WPLC_DTL_ADDR = :workplace_detail_address
 ),
@@ -261,7 +267,9 @@ PHONE_MATCHED_CUST AS (
     SELECT CUST_ID
     FROM BTCAMLDB_OWN.KYC_CUST_BASE
     WHERE :phone_suffix IS NOT NULL
+      AND LENGTH(:phone_suffix) >= 4
       AND SUBSTR(AES_DECRYPT(CUST_TEL_NO), -4) = :phone_suffix
+      AND CUST_ID != :cust_id
 ),
 UNIQUE_CANDIDATES AS (
     SELECT 
@@ -271,25 +279,32 @@ UNIQUE_CANDIDATES AS (
     GROUP BY CUST_ID
 )
 SELECT 
-    UC.MATCH_TYPES "MATCH_TYPES",
-    KB.CUST_ID "고객ID",
-    KB.KYC_EXE_MEM_ID "MID",
-    KB.CUST_KO_NM "성명",
-    AES_DECRYPT(KB.RLNM_CERT_VAL) "실명번호",
-    KB.CUST_BDAY "생년월일",
-    AES_DECRYPT(KB.CUST_EMAIL) "E-mail",
-    N1.NAT_KO_NM "국적",
-    AES_DECRYPT(KB.CUST_TEL_NO) "휴대폰 번호",
-    KB.CUST_ADDR || ' ' || KB.CUST_DTL_ADDR AS "거주주소",
-    KB.WPLC_NM "직장명",
-    KB.WPLC_ADDR || ' ' || KB.WPLC_DTL_ADDR AS "직장주소"
-    
+    UC.MATCH_TYPES AS "MATCH_TYPES",
+    KB.CUST_ID AS "고객ID",
+    COALESCE(M.MEM_ID, KB.KYC_EXE_MEM_ID) AS "MID",
+    KB.CUST_KO_NM AS "성명",
+    AES_DECRYPT(KB.RLNM_CERT_VAL) AS "실명번호",
+    KB.CUST_BDAY AS "생년월일",
+    AES_DECRYPT(KB.CUST_EMAIL) AS "E-mail",
+    N1.NAT_KO_NM AS "국적",
+    AES_DECRYPT(KB.CUST_TEL_NO) AS "휴대폰 번호",
+    CASE 
+        WHEN KB.CUST_DTL_ADDR IS NOT NULL 
+        THEN KB.CUST_ADDR || ' ' || KB.CUST_DTL_ADDR
+        ELSE KB.CUST_ADDR
+    END AS "거주주소",
+    KB.WPLC_NM AS "직장명",
+    CASE 
+        WHEN KB.WPLC_DTL_ADDR IS NOT NULL 
+        THEN KB.WPLC_ADDR || ' ' || KB.WPLC_DTL_ADDR
+        ELSE KB.WPLC_ADDR
+    END AS "직장주소"
 FROM UNIQUE_CANDIDATES UC
 INNER JOIN BTCAMLDB_OWN.KYC_CUST_BASE KB ON UC.CUST_ID = KB.CUST_ID
+LEFT JOIN BTCAMLDB_OWN.KYC_MEM_BASE M ON KB.CUST_ID = M.CUST_ID
 LEFT JOIN BTCAMLDB_OWN.DM_SYS_NAT_BASE N1 ON KB.CUST_NTNLT_CD = N1.LEN3_ABBR_NAT_CD
-WHERE UC.CUST_ID IN (SELECT CUST_ID FROM PHONE_MATCHED_CUST) -- 전화번호 매칭 결과 필터
-  AND UC.CUST_ID != :current_cust_id_final -- 최종적으로 자기 자신은 제외
+WHERE UC.CUST_ID IN (SELECT CUST_ID FROM PHONE_MATCHED_CUST)
+  AND UC.CUST_ID != :cust_id
 ORDER BY KB.CUST_ID
 FETCH FIRST 50 ROWS ONLY
-
 """

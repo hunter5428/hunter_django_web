@@ -4,6 +4,7 @@ Stage 3 SQL 쿼리 템플릿
 IP 접속 이력 조회
 """
 
+# 바인드 변수를 Oracle 스타일로 수정
 IP_ACCESS_HISTORY_QUERY = """
 SELECT 
     B.NAT_KO_NM AS "국가한글명",
@@ -24,8 +25,8 @@ SELECT
 FROM DM_MEM_CONN_LIST A
 INNER JOIN DM_SYS_NAT_BASE B
     ON A.NAT_CD = B.NAT_CD
-WHERE A.MEM_ID = ?
-  AND A.REG_DTM >= TO_DATE(?, 'YYYY-MM-DD')
-  AND A.REG_DTM < TO_DATE(?, 'YYYY-MM-DD') + 1
+WHERE A.MEM_ID = :mem_id
+  AND A.REG_DTM >= TO_DATE(:start_date, 'YYYY-MM-DD')
+  AND A.REG_DTM < TO_DATE(:end_date, 'YYYY-MM-DD') + 1
 ORDER BY A.REG_DTM DESC
 """

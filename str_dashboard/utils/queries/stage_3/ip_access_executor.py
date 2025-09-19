@@ -138,17 +138,19 @@ class IPAccessExecutor:
         return info
     
     def _extract_related_persons_with_mid(self, stage_2_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """
-        Stage 2에서 관련인 정보 추출 (MID 포함)
-        Stage 2의 통합 DataFrame에는 관련인의 상세 정보가 이미 포함되어 있음
-        """
+        """MID가 있는 관련인만 추출"""
         related_df = stage_2_data.get('dataframes', {}).get('related_persons')
-        
-        if related_df is None:
+        if not related_df:
             return []
-        
-        cols = related_df.get('columns', [])
-        rows = related_df.get('rows', [])
+
+        # DataFrame dict 구조 확인
+        if isinstance(related_df, dict):
+            cols = related_df.get('columns', [])
+            rows = related_df.get('rows', [])
+        else:
+            # pandas DataFrame인 경우
+            cols = related_df.columns.tolist()
+            rows = related_df.values.tolist()
         
         related_persons = []
         
@@ -175,15 +177,22 @@ class IPAccessExecutor:
         
         return related_persons
     
+
     def _query_ip_for_person(self, mem_id: str, cust_id: str, name: str,
                             start_date: str, end_date: str, 
                             is_primary: bool = False) -> Dict[str, Any]:
         """개인별 IP 접속 이력 조회"""
         try:
             with self.db_conn.cursor() as cursor:
-                cursor.execute(IP_ACCESS_HISTORY_QUERY, [mem_id, start_date, end_date])
+                # Oracle 스타일 딕셔너리 바인딩
+                params = {
+                    'mem_id': mem_id,
+                    'start_date': start_date,
+                    'end_date': end_date
+                }
+                cursor.execute(IP_ACCESS_HISTORY_QUERY, params)
                 rows = cursor.fetchall()
-                cols = [desc[0] for desc in cursor.description]
+                # cols = [desc[0] for desc in cursor.description]  # 제거
                 
                 # 각 행에 고객 정보 추가
                 enhanced_rows = []
@@ -216,7 +225,9 @@ class IPAccessExecutor:
         except Exception as e:
             logger.error(f"[Stage 3] Error querying IP for {mem_id}: {e}")
             return {'success': False, 'rows': []}
-    
+
+
+
     def _create_unified_structure(self, all_rows: List[List]) -> Dict[str, Any]:
         """통합 DataFrame 구조 생성"""
         # 통합 컬럼 정의
